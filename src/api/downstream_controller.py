@@ -1,4 +1,4 @@
-from downstream_server import (
+from api.downstream_server import (
     DownstreamMCPServerConfig,
     DownstreamMCPServer,
     DownstreamMCPServerTool,

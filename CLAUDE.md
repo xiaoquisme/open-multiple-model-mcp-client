@@ -24,7 +24,7 @@ cp .env-example .env
 
 ```bash
 # Start the application
-python main.py
+python src/main.py
 ```
 
 By default, the server runs on port 3333 and can be accessed at `http://localhost:3333`.

@@ -7,9 +7,9 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse
 
-from composer import Composer
+from api.composer import Composer
 from config import Config
-from downstream_controller import DownstreamController
+from api.downstream_controller import DownstreamController
 from mcp_client import MCPClient
 
 app = FastAPI()
@@ -61,7 +61,7 @@ async def chat_api(request: Request, chat_request: ChatRequest):
 
 @app.get("/")
 async def read_root():
-    return FileResponse("ui/index.html")
+    return FileResponse("src/ui/index.html")
 
 
 def main():

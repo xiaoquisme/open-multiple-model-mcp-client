@@ -4,9 +4,9 @@ from fastapi import FastAPI
 from starlette.routing import Mount
 
 from config import Config
-from downstream_controller import DownstreamController
-from gateway import Gateway
-from server_kit import ServerKit
+from api.downstream_controller import DownstreamController
+from api.gateway import Gateway
+from api.server_kit import ServerKit
 
 
 class Composer:

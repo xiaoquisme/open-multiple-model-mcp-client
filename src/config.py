@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import List
 
-from downstream_server import DownstreamMCPServerConfig
+from api.downstream_server import DownstreamMCPServerConfig
 from dotenv import load_dotenv
 
 # load .env file
@@ -59,7 +59,7 @@ config_logger = logging.getLogger(__name__)
 class Config:
     """Manages application settings, loading MCP server configurations from a JSON file."""
 
-    _DEFAULT_CONFIG_PATH = "./mcp_servers.json"
+    _DEFAULT_CONFIG_PATH = "mcp_servers.json"
 
     def __init__(self):
         """Initializes the Config object."""

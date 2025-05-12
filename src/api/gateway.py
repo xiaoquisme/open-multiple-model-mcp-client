@@ -1,5 +1,5 @@
-from server_kit import ServerKit
-from downstream_server import DownstreamMCPServerTool, DownstreamMCPServer
+from api.server_kit import ServerKit
+from api.downstream_server import DownstreamMCPServerTool, DownstreamMCPServer
 from typing import Any
 import logging  # Import logging
 from mcp.types import (
@@ -11,7 +11,7 @@ from mcp.types import (
     TextContent,
 )
 from mcp.server.lowlevel import Server
-from downstream_controller import DownstreamController
+from api.downstream_controller import DownstreamController
 from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount

@@ -3,7 +3,7 @@ import os
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from downstream_controller import DownstreamController
+from api.downstream_controller import DownstreamController
 
 load_dotenv()  # 加载 .env 文件
 
