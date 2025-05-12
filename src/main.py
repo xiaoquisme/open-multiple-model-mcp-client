@@ -66,29 +66,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# 非流式版本的聊天API（保留兼容性）
-@app.post("/chat", response_model=ChatResponse)
-async def chat_api(request: Request, chat_request: ChatRequest):
-    mcp_client: MCPClient = request.app.state.mcp_client
-    reply_items = await mcp_client.process_query(chat_request.message)
-    
-    # 将ResponseItem列表转换为ChatResponseItem列表
-    chat_items = []
-    for item in reply_items:
-        chat_items.append(
-            ChatResponseItem(
-                type=item.type,
-                content=item.content,
-                alt_text=item.alt_text if item.alt_text is not None else None,
-                tool_results=item.tool_results
-            )
-        )
-    
-    return ChatResponse(
-        items=chat_items
-    )
-
 # 新的流式聊天API
 @app.post("/chat_stream")
 @app.get("/chat_stream")  # 添加GET方法支持
