@@ -138,6 +138,50 @@
             color: #262626;
             border: 1px solid #f0f0f0;
         }
+        /* 工具调用相关样式 */
+        .tool-call {
+            border-radius: 4px;
+            border: 1px solid #e8e8e8;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .tool-call-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f5f5f5;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: #595959;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        .tool-call-header:hover {
+            background: #e6f7ff;
+        }
+        .tool-call-name {
+            display: flex;
+            align-items: center;
+        }
+        .tool-call-name:before {
+            content: "🔧";
+            margin-right: 8px;
+        }
+        .tool-call-toggle {
+            font-size: 12px;
+            color: #8c8c8c;
+        }
+        .tool-call-body {
+            padding: 12px;
+            background: #fafafa;
+            font-size: 13px;
+            max-height: 300px;
+            overflow: auto;
+        }
+        .tool-call-body.collapsed {
+            display: none;
+        }
         .chat-input-area {
             display: flex;
             padding: 16px 24px;
@@ -290,6 +334,10 @@
         let sessionList = [];
         const sessionListDiv = document.getElementById('sessionList');
         const addSessionBtn = document.getElementById('addSessionBtn');
+        
+        // 跟踪当前工具调用
+        let currentToolCallId = null;
+        let messageQueue = [];
 
         function uuid() {
             return 'xxxxxx'.replace(/[x]/g, function() {
@@ -351,8 +399,50 @@
             let history = [];
             chatMessages.querySelectorAll('.message').forEach(msgDiv => {
                 const sender = msgDiv.classList.contains('user') ? 'user' : 'bot';
-                const content = msgDiv.querySelector('.message-content').innerText;
-                history.push({content, sender});
+                const messageType = msgDiv.dataset.messageType || 'text';
+                const contentEl = msgDiv.querySelector('.message-content');
+                
+                // 检查是否是包含工具调用的消息
+                if (contentEl.querySelector('.tool-call')) {
+                    const toolCalls = [];
+                    contentEl.querySelectorAll('.tool-call').forEach(toolCallEl => {
+                        const toolName = toolCallEl.querySelector('.tool-call-name').textContent.replace('🔧 ', '');
+                        const toolResult = toolCallEl.querySelector('.tool-call-body').innerHTML;
+                        toolCalls.push({
+                            toolName,
+                            toolResult,
+                            collapsed: toolCallEl.querySelector('.tool-call-body').classList.contains('collapsed')
+                        });
+                    });
+                    
+                    history.push({
+                        type: 'toolcall',
+                        toolCalls,
+                        sender
+                    });
+                } else if (messageType === 'image') {
+                    const img = contentEl.querySelector('img');
+                    const caption = contentEl.querySelector('div:not(img)');
+                    history.push({
+                        type: 'image',
+                        content: img.src,
+                        alt_text: caption ? caption.textContent : null,
+                        sender
+                    });
+                } else if (messageType === 'audio') {
+                    const audio = contentEl.querySelector('audio');
+                    history.push({
+                        type: 'audio',
+                        content: audio.src,
+                        sender
+                    });
+                } else {
+                    history.push({
+                        type: 'text',
+                        content: contentEl.innerHTML,
+                        sender
+                    });
+                }
             });
             localStorage.setItem(getSessionHistoryKey(currentSessionId), JSON.stringify(history));
         }
@@ -372,7 +462,58 @@
             try {
                 history = JSON.parse(localStorage.getItem(getSessionHistoryKey(currentSessionId)) || '[]');
             } catch {}
-            history.forEach(msg => appendMessage(msg.content, msg.sender, false));
+            history.forEach(msg => {
+                if (msg.type === 'image') {
+                    appendImage(msg.content, msg.alt_text, msg.sender, false);
+                } else if (msg.type === 'audio') {
+                    appendAudio(msg.content, msg.sender, false);
+                } else if (msg.type === 'toolcall') {
+                    const msgDiv = document.createElement('div');
+                    msgDiv.className = 'message ' + msg.sender;
+                    msgDiv.dataset.messageType = 'toolcall';
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'message-content';
+                    
+                    msg.toolCalls.forEach(tool => {
+                        const toolCallDiv = document.createElement('div');
+                        toolCallDiv.className = 'tool-call';
+                        
+                        const headerDiv = document.createElement('div');
+                        headerDiv.className = 'tool-call-header';
+                        
+                        const nameDiv = document.createElement('div');
+                        nameDiv.className = 'tool-call-name';
+                        nameDiv.textContent = tool.toolName;
+                        
+                        const toggleDiv = document.createElement('div');
+                        toggleDiv.className = 'tool-call-toggle';
+                        toggleDiv.textContent = tool.collapsed ? '展开' : '折叠';
+                        
+                        headerDiv.appendChild(nameDiv);
+                        headerDiv.appendChild(toggleDiv);
+                        
+                        const bodyDiv = document.createElement('div');
+                        bodyDiv.className = 'tool-call-body' + (tool.collapsed ? ' collapsed' : '');
+                        bodyDiv.innerHTML = tool.toolResult;
+                        
+                        headerDiv.onclick = function() {
+                            bodyDiv.classList.toggle('collapsed');
+                            toggleDiv.textContent = bodyDiv.classList.contains('collapsed') ? '展开' : '折叠';
+                        };
+                        
+                        toolCallDiv.appendChild(headerDiv);
+                        toolCallDiv.appendChild(bodyDiv);
+                        contentDiv.appendChild(toolCallDiv);
+                    });
+                    
+                    msgDiv.appendChild(contentDiv);
+                    chatMessages.appendChild(msgDiv);
+                } else {
+                    appendMessage(msg.content, msg.sender, false);
+                }
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
         function clearChatHistory() {
@@ -405,16 +546,187 @@
             return html;
         }
 
+        // 开始或继续工具调用部分
+        function appendToolCall(toolName, sender, save = true) {
+            // 检查是否已有工具调用消息
+            let msgDiv, contentDiv;
+            
+            if (currentToolCallId) {
+                // 继续向现有的工具调用消息添加内容
+                msgDiv = document.getElementById(currentToolCallId);
+                contentDiv = msgDiv.querySelector('.message-content');
+            } else {
+                // 创建新的工具调用消息
+                currentToolCallId = 'tool-call-' + uuid();
+                msgDiv = document.createElement('div');
+                msgDiv.className = 'message ' + sender;
+                msgDiv.id = currentToolCallId;
+                msgDiv.dataset.messageType = 'toolcall';
+                
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                msgDiv.appendChild(contentDiv);
+                chatMessages.appendChild(msgDiv);
+            }
+            
+            // 创建工具调用UI
+            const toolCallDiv = document.createElement('div');
+            toolCallDiv.className = 'tool-call';
+            toolCallDiv.dataset.toolName = toolName;
+            
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'tool-call-header';
+            
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'tool-call-name';
+            nameDiv.textContent = toolName;
+            
+            const toggleDiv = document.createElement('div');
+            toggleDiv.className = 'tool-call-toggle';
+            toggleDiv.textContent = '折叠';
+            
+            headerDiv.appendChild(nameDiv);
+            headerDiv.appendChild(toggleDiv);
+            
+            const bodyDiv = document.createElement('div');
+            bodyDiv.className = 'tool-call-body';
+            bodyDiv.innerHTML = '<div style="color:#8c8c8c;font-style:italic;">等待工具返回结果...</div>';
+            
+            headerDiv.onclick = function() {
+                bodyDiv.classList.toggle('collapsed');
+                toggleDiv.textContent = bodyDiv.classList.contains('collapsed') ? '展开' : '折叠';
+            };
+            
+            toolCallDiv.appendChild(headerDiv);
+            toolCallDiv.appendChild(bodyDiv);
+            contentDiv.appendChild(toolCallDiv);
+            
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            // 暂不保存，等工具结果返回后一起保存
+            return bodyDiv; // 返回工具结果容器以便后续更新
+        }
+        
+        // 更新工具返回结果
+        function updateToolCallResult(result, bodyDiv) {
+            bodyDiv.innerHTML = renderMessageContent(result);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // 如果消息队列中有待处理的消息，继续处理
+            processMessageQueue();
+        }
+        
+        // 完成所有工具调用
+        function finishToolCalls() {
+            // 保存最终的工具调用消息
+            if (currentToolCallId) {
+                const msgDiv = document.getElementById(currentToolCallId);
+                const toolCalls = [];
+                
+                msgDiv.querySelectorAll('.tool-call').forEach(toolCallEl => {
+                    const toolName = toolCallEl.dataset.toolName;
+                    const toolResult = toolCallEl.querySelector('.tool-call-body').innerHTML;
+                    toolCalls.push({
+                        toolName,
+                        toolResult,
+                        collapsed: false
+                    });
+                });
+                
+                saveChatMessage({
+                    type: 'toolcall',
+                    toolCalls,
+                    sender: 'bot'
+                });
+                
+                currentToolCallId = null;
+            }
+        }
+        
+        // 处理消息队列
+        function processMessageQueue() {
+            if (messageQueue.length > 0) {
+                const nextMsg = messageQueue.shift();
+                
+                if (nextMsg.type === 'toolcall') {
+                    // 开始工具调用
+                    const resultContainer = appendToolCall(nextMsg.toolName, 'bot', false);
+                    // 显示工具返回结果
+                    updateToolCallResult(nextMsg.result, resultContainer);
+                } else if (nextMsg.type === 'text') {
+                    // 如果有未完成的工具调用，先完成它
+                    finishToolCalls();
+                    // 显示普通文本消息
+                    appendMessage(nextMsg.content, 'bot');
+                } else if (nextMsg.type === 'image') {
+                    finishToolCalls();
+                    appendImage(nextMsg.content, nextMsg.alt_text, 'bot');
+                } else if (nextMsg.type === 'audio') {
+                    finishToolCalls();
+                    appendAudio(nextMsg.content, 'bot');
+                }
+            } else {
+                // 所有消息处理完毕，结束工具调用
+                finishToolCalls();
+            }
+        }
+
         function appendMessage(content, sender, save = true) {
+            // 如果是工具调用文本，将其放入队列
+            if (sender === 'bot' && content.startsWith('调用工具: ')) {
+                const toolName = content.replace('调用工具: ', '');
+                messageQueue.push({
+                    type: 'toolcall',
+                    toolName,
+                    result: '等待结果...' // 暂时占位，稍后会更新
+                });
+                // 如果是第一条消息，开始处理队列
+                if (messageQueue.length === 1 && !currentToolCallId) {
+                    processMessageQueue();
+                }
+                return;
+            }
+            
+            // 非工具调用文本，检查是否有未处理的工具调用
+            if (sender === 'bot' && messageQueue.length > 0) {
+                // 如果是工具调用后的消息
+                const lastMsg = messageQueue[messageQueue.length - 1];
+                if (lastMsg.type === 'toolcall') {
+                    // 更新最后一个工具调用的结果
+                    lastMsg.result = content;
+                    return;
+                }
+                
+                // 不是工具调用的后续消息，加入普通消息队列
+                messageQueue.push({
+                    type: 'text',
+                    content
+                });
+                
+                // 如果队列只有这一条消息并且没有活动的工具调用，立即处理
+                if (messageQueue.length === 1 && !currentToolCallId) {
+                    processMessageQueue();
+                }
+                return;
+            }
+            
+            // 普通文本消息（非工具相关或用户消息）
+            if (sender === 'bot' && currentToolCallId) {
+                finishToolCalls(); // 结束之前的工具调用
+            }
+            
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message ' + sender;
+            msgDiv.dataset.messageType = 'text';
+            
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             contentDiv.innerHTML = renderMessageContent(content);
+            
             msgDiv.appendChild(contentDiv);
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
-            if (save) saveChatMessage({content, sender});
+            
+            if (save) saveChatMessage({type: 'text', content, sender});
         }
 
         function sendMessage() {
@@ -424,6 +736,11 @@
             chatInput.value = '';
             chatInput.disabled = true;
             sendBtn.disabled = true;
+            
+            // 重置工具调用状态
+            currentToolCallId = null;
+            messageQueue = [];
+            
             // 调用后端 /chat API
             fetch('/chat', {
                 method: 'POST',
@@ -432,9 +749,29 @@
                 },
                 body: JSON.stringify({ message: text })
             })
-            .then(res => res.text())
-            .then(reply => {
-                appendMessage(reply, 'bot');
+            .then(res => res.json())
+            .then(response => {
+                if (!response.items || !response.items.length) {
+                    appendMessage("未收到有效回复", 'bot');
+                    return;
+                }
+                
+                // 处理不同类型的响应
+                response.items.forEach(item => {
+                    switch(item.type) {
+                        case 'text':
+                            appendMessage(item.content, 'bot');
+                            break;
+                        case 'image':
+                            appendImage(item.content, item.alt_text || '图片', 'bot');
+                            break;
+                        case 'audio':
+                            appendAudio(item.content, 'bot');
+                            break;
+                        default:
+                            appendMessage(item.content, 'bot');
+                    }
+                });
                 chatInput.disabled = false;
                 sendBtn.disabled = false;
                 chatInput.focus();
@@ -496,6 +833,90 @@
             });
         }
         fetchServers();
+
+        // 添加图片消息
+        function appendImage(src, alt, sender, save = true) {
+            if (sender === 'bot' && currentToolCallId) {
+                finishToolCalls(); // 结束之前的工具调用
+            }
+            
+            if (sender === 'bot' && messageQueue.length > 0) {
+                messageQueue.push({
+                    type: 'image',
+                    content: src,
+                    alt_text: alt
+                });
+                if (messageQueue.length === 1) {
+                    processMessageQueue();
+                }
+                return;
+            }
+            
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + sender;
+            msgDiv.dataset.messageType = 'image';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = alt;
+            img.style.maxWidth = '100%';
+            img.style.borderRadius = '4px';
+            
+            contentDiv.appendChild(img);
+            if (alt && alt !== '图片') {
+                const caption = document.createElement('div');
+                caption.textContent = alt;
+                caption.style.marginTop = '8px';
+                caption.style.fontSize = '13px';
+                caption.style.color = '#8c8c8c';
+                contentDiv.appendChild(caption);
+            }
+            
+            msgDiv.appendChild(contentDiv);
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            if (save) saveChatMessage({type: 'image', content: src, alt_text: alt, sender});
+        }
+        
+        // 添加音频消息
+        function appendAudio(src, sender, save = true) {
+            if (sender === 'bot' && currentToolCallId) {
+                finishToolCalls(); // 结束之前的工具调用
+            }
+            
+            if (sender === 'bot' && messageQueue.length > 0) {
+                messageQueue.push({
+                    type: 'audio',
+                    content: src
+                });
+                if (messageQueue.length === 1) {
+                    processMessageQueue();
+                }
+                return;
+            }
+            
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + sender;
+            msgDiv.dataset.messageType = 'audio';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = src;
+            
+            contentDiv.appendChild(audio);
+            msgDiv.appendChild(contentDiv);
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            if (save) saveChatMessage({type: 'audio', content: src, sender});
+        }
     </script>
 </body>
 </html>

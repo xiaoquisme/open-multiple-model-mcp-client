@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
@@ -17,6 +18,15 @@ app = FastAPI()
 
 class ChatRequest(BaseModel):
     message: str
+
+class ChatResponseItem(BaseModel):
+    type: str  # "text", "audio", "image" 等
+    content: str  # 内容、URL或Base64编码的数据
+    alt_text: Optional[str] = None  # 可选的替代文本
+
+class ChatResponse(BaseModel):
+    items: list[ChatResponseItem]
+    conversation_id: str = None
 
 # 请根据实际 MCP 服务地址修改 base_url
 config = Config()
@@ -53,11 +63,25 @@ app.add_middleware(
 )
 
 
-@app.post("/chat", response_model=str)
+@app.post("/chat", response_model=ChatResponse)
 async def chat_api(request: Request, chat_request: ChatRequest):
     mcp_client: MCPClient = request.app.state.mcp_client
-    reply = await mcp_client.process_query(chat_request.message)
-    return reply
+    reply_items = await mcp_client.process_query(chat_request.message)
+    
+    # 将ResponseItem列表转换为ChatResponseItem列表
+    chat_items = []
+    for item in reply_items:
+        chat_items.append(
+            ChatResponseItem(
+                type=item.type,
+                content=item.content,
+                alt_text=item.alt_text if item.alt_text is not None else None
+            )
+        )
+    
+    return ChatResponse(
+        items=chat_items
+    )
 
 @app.get("/")
 async def read_root():
