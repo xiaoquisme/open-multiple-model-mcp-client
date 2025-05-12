@@ -46,6 +46,7 @@ This project is designed to serve as a gateway between Anthropic's Claude API an
 4. Add your Anthropic API key to the `.env` file:
    ```
    ANTHROPIC_API_KEY=sk-ant-xxxxx
+   OPENAI_API_KEY=sk-xxxx
    ```
 
 ## Configuration
@@ -84,7 +85,9 @@ Configure MCP servers in the `mcp_servers.json` file:
 python main.py
 ```
 
-By default, the server runs on port 3333 and can be accessed at `http://localhost:3333`.
+By default, the server runs on port 3333 and can be accessed at `http://localhost:3333`, you will see.
+
+![welcome page](./docs/img.png)
 
 ### Using the Chat API
 
