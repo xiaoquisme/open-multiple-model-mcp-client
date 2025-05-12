@@ -63,6 +63,15 @@ async def chat_api(request: Request, chat_request: ChatRequest):
 async def read_root():
     return FileResponse("src/ui/index.html")
 
+@app.get("/servers", response_model=list)
+async def list_servers(request: Request):
+    composer = request.app.state.composer
+    server_kit = await composer.get_server_kit("composer")
+    result = []
+    for server_name in server_kit.servers_enabled.keys():
+        tools = [tool for tool in server_kit.servers_tools_hierarchy_map.get(server_name, []) if server_kit.tools_enabled.get(tool)]
+        result.append({"name": server_name, "tools": tools})
+    return result
 
 def main():
     uvicorn.run("main:app", host="0.0.0.0", port=3333, reload=True)
