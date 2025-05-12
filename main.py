@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
+from starlette.responses import FileResponse
 
 from composer import Composer
 from config import Config
@@ -57,6 +58,10 @@ async def chat_api(request: Request, chat_request: ChatRequest):
     mcp_client: MCPClient = request.app.state.mcp_client
     reply = await mcp_client.process_query(chat_request.message)
     return reply
+
+@app.get("/")
+async def read_root():
+    return FileResponse("ui/index.html")
 
 
 def main():
