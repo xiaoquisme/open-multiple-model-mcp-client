@@ -16,20 +16,24 @@
         .top-navbar {
             background: #fff;
             box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-            padding: 12px 24px;
+            padding: 8px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            width: 100%;
+            box-sizing: border-box;
         }
         .app-logo {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
             color: #1890ff;
+            flex-shrink: 0;
         }
         .model-selector-container {
             display: flex;
             gap: 16px;
             align-items: center;
+            flex-shrink: 0;
         }
         .model-selector {
             display: flex;
@@ -69,29 +73,39 @@
         .model-apply-btn:hover {
             background: #40a9ff;
         }
+        .model-apply-btn:before {
+            content: "+";
+            margin-right: 6px;
+            font-size: 16px;
+            font-weight: bold;
+        }
         .main-layout {
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: flex-start;
-            margin: 24px auto;
-            max-width: 1200px;
+            margin: 12px auto 0;
+            padding: 0 24px;
+            width: 100%;
+            max-width: 100%;
             gap: 24px;
+            box-sizing: border-box;
         }
         .sidebar {
             width: 240px;
             background: #fff;
-            height: 600px;
+            height: calc(100vh - 80px);
             display: flex;
             flex-direction: column;
             padding: 0;
             border: none;
             box-shadow: 0 1px 2px rgba(0,0,0,0.04);
             overflow: hidden;
+            flex-shrink: 0;
         }
         .session-list-title {
             font-size: 16px;
             font-weight: 600;
-            padding: 20px 0 12px 20px;
+            padding: 15px 0 10px 20px;
             color: #262626;
             border-bottom: 1px solid #f0f0f0;
             background: #fafafa;
@@ -103,14 +117,14 @@
             padding: 8px 0;
         }
         .session-item {
-            padding: 10px 20px;
+            padding: 8px 20px;
             font-size: 14px;
             color: #595959;
             border-bottom: none;
             cursor: pointer;
             background: none;
             transition: all 0.2s;
-            margin: 2px 0;
+            margin: 1px 0;
         }
         .session-item:hover {
             background: #f5f5f5;
@@ -122,7 +136,7 @@
             border-right: 3px solid #1890ff;
         }
         .session-actions {
-            padding: 16px 20px;
+            padding: 12px 20px;
             background: #fafafa;
             border-top: 1px solid #f0f0f0;
         }
@@ -150,21 +164,24 @@
             font-weight: bold;
         }
         .chat-container {
-            width: 460px;
+            flex: 1;
+            min-width: 700px;
+            max-width: 1200px;
             background: #fff;
             display: flex;
             flex-direction: column;
-            height: 600px;
+            height: calc(100vh - 80px);
             border: none;
             box-shadow: 0 1px 2px rgba(0,0,0,0.04);
             margin: 0;
         }
         .chat-messages {
             flex: 1;
-            padding: 24px;
+            padding: 20px;
             overflow-y: auto;
             border-bottom: 1px solid #f0f0f0;
             background: #f9f9f9;
+            height: calc(100% - 65px);
         }
         .message {
             margin-bottom: 20px;
@@ -174,7 +191,7 @@
             justify-content: flex-end;
         }
         .message-content {
-            max-width: 80%;
+            max-width: 90%;
             padding: 12px 16px;
             font-size: 14px;
             line-height: 1.6;
@@ -241,9 +258,11 @@
         }
         .chat-input-area {
             display: flex;
-            padding: 16px 24px;
+            padding: 12px 20px;
             background: #fff;
             border-top: 1px solid #f0f0f0;
+            width: calc(100% - 40px);
+            box-sizing: border-box;
         }
         .chat-input {
             flex: 1;
@@ -278,18 +297,19 @@
         .server-list-container {
             width: 240px;
             background: #fff;
-            height: 600px;
+            height: calc(100vh - 80px);
             padding: 0;
             display: flex;
             flex-direction: column;
             border: none;
             box-shadow: 0 1px 2px rgba(0,0,0,0.04);
             overflow: hidden;
+            flex-shrink: 0;
         }
         .server-list-title {
             font-size: 16px;
             font-weight: 600;
-            padding: 20px 0 12px 20px;
+            padding: 15px 0 10px 20px;
             color: #262626;
             border-bottom: 1px solid #f0f0f0;
             background: #fafafa;
@@ -301,10 +321,10 @@
             padding: 8px 0;
         }
         .server-item {
-            padding: 10px 20px;
+            padding: 8px 20px;
             font-size: 14px;
             color: #595959;
-            margin: 2px 0;
+            margin: 1px 0;
             cursor: pointer;
             transition: background 0.2s;
         }
