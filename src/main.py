@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
+import json
+import asyncio
 
 import uvicorn
 from fastapi import FastAPI
@@ -7,6 +9,7 @@ from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse
+from sse_starlette.sse import EventSourceResponse
 
 from api.composer import Composer
 from config import Config
@@ -64,6 +67,7 @@ app.add_middleware(
 )
 
 
+# 非流式版本的聊天API（保留兼容性）
 @app.post("/chat", response_model=ChatResponse)
 async def chat_api(request: Request, chat_request: ChatRequest):
     mcp_client: MCPClient = request.app.state.mcp_client
@@ -84,6 +88,47 @@ async def chat_api(request: Request, chat_request: ChatRequest):
     return ChatResponse(
         items=chat_items
     )
+
+# 新的流式聊天API
+@app.post("/chat_stream")
+@app.get("/chat_stream")  # 添加GET方法支持
+async def chat_stream_api(request: Request, chat_request: Optional[ChatRequest] = None, message: Optional[str] = None):
+    """流式聊天API，使用SSE返回响应"""
+    # 优先使用POST中的JSON数据，如果没有则使用URL查询参数
+    query = None
+    if chat_request:
+        query = chat_request.message
+    elif message:
+        query = message
+    else:
+        return {"error": "缺少消息内容，请提供message参数"}
+        
+    async def event_generator():
+        mcp_client: MCPClient = request.app.state.mcp_client
+        
+        # 使用新的流式处理方法
+        async for item in mcp_client.process_query_stream(query):
+            chat_item = ChatResponseItem(
+                type=item.type,
+                content=item.content,
+                alt_text=item.alt_text if item.alt_text is not None else None,
+                tool_results=item.tool_results
+            )
+            # 将响应项转换为JSON并发送
+            yield {
+                "event": "message",
+                "data": chat_item.json()
+            }
+            # 添加一个小延迟，以确保前端能够处理每个消息
+            await asyncio.sleep(0.01)
+        
+        # 发送完成事件
+        yield {
+            "event": "done",
+            "data": json.dumps({"status": "complete"})
+        }
+        
+    return EventSourceResponse(event_generator())
 
 @app.get("/")
 async def read_root():

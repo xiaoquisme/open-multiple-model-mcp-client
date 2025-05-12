@@ -742,49 +742,58 @@
             currentToolCallId = null;
             messageQueue = [];
             
-            // 调用后端 /chat API
-            fetch('/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ message: text })
-            })
-            .then(res => res.json())
-            .then(response => {
-                if (!response.items || !response.items.length) {
-                    appendMessage("未收到有效回复", 'bot');
-                    return;
-                }
+            // 使用 EventSource 建立 SSE 连接
+            const eventSource = new EventSource(`/chat_stream?message=${encodeURIComponent(text)}`);
+            
+            // 存储当前消息状态
+            let pendingToolCall = null;
+            let messageItems = [];
+            
+            // 处理服务器发送的消息事件
+            eventSource.addEventListener('message', function(event) {
+                const data = JSON.parse(event.data);
                 
-                // 处理不同类型的响应
-                response.items.forEach(item => {
-                    switch(item.type) {
-                        case 'text':
-                            appendMessage(item.content, 'bot');
-                            break;
-                        case 'image':
-                            appendImage(item.content, item.alt_text || '图片', 'bot');
-                            break;
-                        case 'audio':
-                            appendAudio(item.content, 'bot');
-                            break;
-                        case 'tool_call':
-                            appendToolCallWithResults(item.content, item.tool_results || [], 'bot');
-                            break;
-                        default:
-                            appendMessage(item.content, 'bot');
-                    }
-                });
+                if (data.type === 'tool_call_start') {
+                    // 工具调用开始
+                    pendingToolCall = {
+                        toolName: data.content,
+                        results: []
+                    };
+                } else if (data.type === 'tool_call') {
+                    // 工具调用结果
+                    appendToolCallWithResults(data.content, data.tool_results || [], 'bot');
+                } else if (data.type === 'text') {
+                    // 文本消息
+                    appendMessage(data.content, 'bot');
+                } else if (data.type === 'image') {
+                    // 图片消息
+                    appendImage(data.content, data.alt_text || '图片', 'bot');
+                } else if (data.type === 'audio') {
+                    // 音频消息
+                    appendAudio(data.content, 'bot');
+                }
+            });
+            
+            // 处理完成事件
+            eventSource.addEventListener('done', function(event) {
+                // 关闭 SSE 连接
+                eventSource.close();
+                
+                // 恢复输入框状态
                 chatInput.disabled = false;
                 sendBtn.disabled = false;
                 chatInput.focus();
-            })
-            .catch(err => {
-                appendMessage('请求失败: ' + err, 'bot');
+            });
+            
+            // 处理错误事件
+            eventSource.onerror = function(error) {
+                console.error('SSE连接错误:', error);
+                appendMessage('连接错误，请稍后重试', 'bot');
+                eventSource.close();
+                
                 chatInput.disabled = false;
                 sendBtn.disabled = false;
-            });
+            };
         }
 
         sendBtn.onclick = sendMessage;
