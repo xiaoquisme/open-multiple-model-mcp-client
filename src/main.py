@@ -94,7 +94,7 @@ async def chat_stream_api(request: Request, chat_request: Optional[ChatRequest] 
             # 将响应项转换为JSON并发送
             yield {
                 "event": "message",
-                "data": chat_item.json()
+                "data": chat_item.model_dump_json()
             }
             # 添加一个小延迟，以确保前端能够处理每个消息
             await asyncio.sleep(0.01)

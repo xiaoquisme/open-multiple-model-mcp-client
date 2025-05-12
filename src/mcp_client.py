@@ -1,14 +1,18 @@
+import json
 import os
 import time
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
-from anthropic import Anthropic
 from anthropic._exceptions import OverloadedError, RateLimitError, APIError
 from dotenv import load_dotenv
+from litellm import completion
 
 from api.downstream_controller import DownstreamController
 
 load_dotenv()  # 加载 .env 文件
+os.environ.get("ANTHROPIC_API_KEY")
+os.environ.get("OPENAI_API_KEY")
+
 
 # 定义响应项数据结构（与main.py中的ChatResponseItem保持一致）
 class ResponseItem:
@@ -20,15 +24,12 @@ class ResponseItem:
 
 class MCPClient:
     def __init__(self, mcp_composer: DownstreamController):
-        self.anthropic = Anthropic(
-            api_key=os.environ.get("ANTHROPIC_API_KEY")
-        )
         self.mcp_composer = mcp_composer
         self.max_retries = 3  # 最大重试次数
         self.retry_delay = 2  # 重试间隔（秒）
 
     # 抽取共同的工具准备逻辑
-    async def _prepare_tools(self):
+    def _prepare_tools(self):
         """准备可用工具列表"""
         available_tools = []
         for tool in self.mcp_composer.tools_map.values():
@@ -50,10 +51,12 @@ class MCPClient:
     async def _call_tool(self, tool_name, tool_args):
         """调用工具并处理结果"""
         tool_results = []
+        result = None  # 确保result总是被初始化
+        
         try:
             real_tool_name = self.mcp_composer.get_tool_by_control_name(tool_name).tool.name
             result = await (self.mcp_composer.get_server_by_tool_name(tool_name)
-                          .session.call_tool(real_tool_name, tool_args))
+                          .session.call_tool(real_tool_name, json.loads(tool_args)))
             
             # 处理工具返回的结果
             if result.content and isinstance(result.content, list):
@@ -84,6 +87,8 @@ class MCPClient:
                 "type": "text",
                 "content": f"工具调用失败: {str(tool_error)}"
             })
+            # 当发生异常时创建一个空的结果对象
+            result = type('EmptyResult', (), {'content': []})()
         
         return tool_results, result
     
@@ -120,74 +125,109 @@ class MCPClient:
     async def process_query_stream(self, query: str) -> AsyncGenerator[ResponseItem, None]:
         """处理查询并以流的形式逐个返回响应项"""
         messages = [{"role": "user", "content": query}]
-        available_tools = await self._prepare_tools()
+        available_tools = self._prepare_tools()
         
         # 错误处理和重试逻辑
         retry_count = 0
         while retry_count <= self.max_retries:
             try:
                 # 调用Claude API
-                response = self.anthropic.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                response = completion(
+                    model="anthropic/claude-3-5-sonnet-20241022",
                     max_tokens=1000,
                     messages=messages,
                     tools=available_tools
                 )
-                
+
+                # Process the response based on the structure provided
                 assistant_message_content = []
-                for content in response.content:
-                    if content.type == 'text':
-                        # 文本响应
-                        text_item = ResponseItem(type="text", content=content.text)
+                if response.choices and len(response.choices) > 0:
+                    message = response.choices[0].message
+                    
+                    # Handle text content
+                    if message.content:
+                        text_item = ResponseItem(type="text", content=message.content)
                         yield text_item
-                        assistant_message_content.append(content)
-                    elif content.type == 'tool_use':
-                        # 工具调用
-                        tool_name = content.name
-                        tool_args = content.input
-                        
-                        # 通知前端工具调用开始
-                        yield ResponseItem(
-                            type="tool_call_start",
-                            content=tool_name
-                        )
-                        
-                        # 调用工具并获取结果
-                        tool_results, result = await self._call_tool(tool_name, tool_args)
-                        
-                        # 返回工具调用结果
-                        yield ResponseItem(
-                            type="tool_call",
-                            content=tool_name,
-                            tool_results=tool_results
-                        )
+                        assistant_message_content.append({"type": "text", "text": message.content})
+                    
+                    # Handle tool calls if present
+                    if message.tool_calls:
+                        for tool_call in message.tool_calls:
+                            tool_name = tool_call.function.name
+                            tool_args = tool_call.function.arguments
                             
-                        # 继续与模型对话
-                        assistant_message_content.append(content)
-                        messages.append({"role": "assistant", "content": assistant_message_content})
-                        messages.append({
-                            "role": "user",
-                            "content": [{
-                                "type": "tool_result",
-                                "tool_use_id": content.id,
-                                "content": result.content
-                            }]
-                        })
-                        
-                        # 工具调用后继续处理模型响应
-                        try:
-                            response = self.anthropic.messages.create(
-                                model="claude-3-5-sonnet-20241022",
-                                max_tokens=1000,
-                                messages=messages,
-                                tools=available_tools
+                            # Notify frontend about tool call
+                            yield ResponseItem(
+                                type="tool_call_start",
+                                content=tool_name
                             )
-                            # 处理工具调用后模型的回复
-                            if response.content and len(response.content) > 0:
-                                if response.content[0].type == 'text':
-                                    yield ResponseItem(type="text", content=response.content[0].text)
-                        except (OverloadedError, RateLimitError, APIError) as api_error:
-                            yield ResponseItem(type="text", content=f"模型响应失败: {str(api_error)}")
+                            
+                            # Call the tool and get results
+                            tool_results, result = await self._call_tool(tool_name, tool_args)
+                            
+                            # Return tool call results
+                            yield ResponseItem(
+                                type="tool_call",
+                                content=tool_name,
+                                tool_results=tool_results
+                            )
+                            
+                            # 继续与模型对话
+                            assistant_message_content = []
+                            assistant_message_content.append({
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": tool_args if isinstance(tool_args, str) else json.dumps(tool_args)
+                                }
+                            })
+                            messages.append({"role": "assistant", "content": None, "tool_calls": [{
+                                "id": tool_call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": tool_args if isinstance(tool_args, str) else json.dumps(tool_args)
+                                }
+                            }]})
+                            
+                            # 将工具结果转换为OpenAI格式
+                            # 处理结果内容为字符串
+                            tool_result_content = ""
+                            if result.content:
+                                if isinstance(result.content, list):
+                                    for item in result.content:
+                                        if hasattr(item, 'text'):
+                                            tool_result_content += item.text + "\n"
+                                        elif isinstance(item, dict):
+                                            tool_result_content += json.dumps(item) + "\n"
+                                        else:
+                                            tool_result_content += str(item) + "\n"
+                                elif isinstance(result.content, str):
+                                    tool_result_content = result.content
+                                else:
+                                    tool_result_content = json.dumps(result.content)
+                            
+                            # 使用OpenAI格式的工具响应
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": tool_result_content.strip()
+                            })
+                            
+                            # 处理模型的响应
+                            try:
+                                response = completion(
+                                    model="anthropic/claude-3-5-sonnet-20241022",
+                                    max_tokens=1000,
+                                    messages=messages,
+                                    tools=available_tools
+                                )
+                                # Handle the model's response after the tool call
+                                if response.choices and len(response.choices) > 0:
+                                    if response.choices[0].message.content:
+                                        yield ResponseItem(type="text", content=response.choices[0].message.content)
+                            except (OverloadedError, RateLimitError, APIError) as api_error:
+                                yield ResponseItem(type="text", content=f"模型响应失败: {str(api_error)}")
                 
                 # 成功处理请求，跳出重试循环
                 break
