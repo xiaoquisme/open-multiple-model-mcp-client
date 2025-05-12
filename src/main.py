@@ -2,9 +2,10 @@ from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 import json
 import asyncio
+import os  # 添加os导入
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Query  # 添加Query导入
 from pydantic import BaseModel
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -69,7 +70,13 @@ app.add_middleware(
 # 新的流式聊天API
 @app.post("/chat_stream")
 @app.get("/chat_stream")  # 添加GET方法支持
-async def chat_stream_api(request: Request, chat_request: Optional[ChatRequest] = None, message: Optional[str] = None):
+async def chat_stream_api(
+    request: Request, 
+    chat_request: Optional[ChatRequest] = None, 
+    message: Optional[str] = None,
+    platform: Optional[str] = None,  # 新增平台参数
+    model: Optional[str] = None      # 新增模型参数
+):
     """流式聊天API，使用SSE返回响应"""
     # 优先使用POST中的JSON数据，如果没有则使用URL查询参数
     query = None
@@ -84,7 +91,8 @@ async def chat_stream_api(request: Request, chat_request: Optional[ChatRequest] 
         mcp_client: MCPClient = request.app.state.mcp_client
         
         # 使用新的流式处理方法
-        async for item in mcp_client.process_query_stream(query):
+        # 传递平台和模型参数
+        async for item in mcp_client.process_query_stream(query, platform, model):
             chat_item = ChatResponseItem(
                 type=item.type,
                 content=item.content,
@@ -120,6 +128,67 @@ async def list_servers(request: Request):
         tools = [tool for tool in server_kit.servers_tools_hierarchy_map.get(server_name, []) if server_kit.tools_enabled.get(tool)]
         result.append({"name": server_name, "tools": tools})
     return result
+
+# 新增：获取可用平台列表
+@app.get("/api/platforms")
+async def get_platforms():
+    # 提供支持的平台列表
+    platforms = [
+        {"id": "anthropic", "name": "Anthropic"},
+        {"id": "openai", "name": "OpenAI"},
+        {"id": "google", "name": "Google"},
+        {"id": "mistral", "name": "Mistral"}
+    ]
+    # 如果存在环境变量，则根据环境变量筛选可用平台
+    available_platforms = []
+    for platform in platforms:
+        if platform["id"] == "anthropic" and os.environ.get("ANTHROPIC_API_KEY"):
+            available_platforms.append(platform)
+        elif platform["id"] == "openai" and os.environ.get("OPENAI_API_KEY"):
+            available_platforms.append(platform)
+        elif platform["id"] == "google" and os.environ.get("GOOGLE_API_KEY"):
+            available_platforms.append(platform)
+        elif platform["id"] == "mistral" and os.environ.get("MISTRAL_API_KEY"):
+            available_platforms.append(platform)
+    
+    # 如果没有可用平台（环境变量未设置），则返回所有平台
+    if not available_platforms:
+        return platforms
+    
+    return available_platforms
+
+# 新增：根据平台获取模型列表
+@app.get("/api/models")
+async def get_models(platform: str = Query(..., description="平台ID，如anthropic, openai等")):
+    # 各平台支持的模型列表
+    models_by_platform = {
+        "anthropic": [
+            {"id": "claude-3-opus-20240229", "name": "Claude 3 Opus"},
+            {"id": "claude-3-sonnet-20240229", "name": "Claude 3 Sonnet"},
+            {"id": "claude-3-haiku-20240307", "name": "Claude 3 Haiku"},
+            {"id": "claude-2.1", "name": "Claude 2.1"},
+            {"id": "claude-2.0", "name": "Claude 2.0"}
+        ],
+        "openai": [
+            {"id": "gpt-4o", "name": "GPT-4o"},
+            {"id": "gpt-4-turbo", "name": "GPT-4 Turbo"},
+            {"id": "gpt-4", "name": "GPT-4"},
+            {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"}
+        ],
+        "google": [
+            {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
+            {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"},
+            {"id": "gemini-1.0-pro", "name": "Gemini 1.0 Pro"}
+        ],
+        "mistral": [
+            {"id": "mistral-large-latest", "name": "Mistral Large"},
+            {"id": "mistral-medium-latest", "name": "Mistral Medium"},
+            {"id": "mistral-small-latest", "name": "Mistral Small"}
+        ]
+    }
+    
+    # 返回对应平台的模型列表，如果平台不存在则返回空列表
+    return models_by_platform.get(platform, [])
 
 def main():
     uvicorn.run("main:app", host="0.0.0.0", port=3333, reload=True)

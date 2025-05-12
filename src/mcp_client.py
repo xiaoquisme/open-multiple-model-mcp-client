@@ -122,18 +122,32 @@ class MCPClient:
                 content=f"处理请求时发生错误: {str(error)}"
             ), True
     
-    async def process_query_stream(self, query: str) -> AsyncGenerator[ResponseItem, None]:
+    async def process_query_stream(self, query: str, platform: Optional[str] = None, model: Optional[str] = None) -> AsyncGenerator[ResponseItem, None]:
         """处理查询并以流的形式逐个返回响应项"""
         messages = [{"role": "user", "content": query}]
         available_tools = self._prepare_tools()
+        
+        # 根据选择的平台和模型确定要使用的模型
+        selected_model = "anthropic/claude-3-5-sonnet-20241022"  # 默认模型
+        
+        if platform and model:
+            # 根据平台选择正确的模型格式
+            if platform == "anthropic":
+                selected_model = f"anthropic/{model}"
+            elif platform == "openai":
+                selected_model = model
+            elif platform == "google":
+                selected_model = f"google/{model}"
+            elif platform == "mistral":
+                selected_model = f"mistral/{model}"
         
         # 错误处理和重试逻辑
         retry_count = 0
         while retry_count <= self.max_retries:
             try:
-                # 调用Claude API
+                # 调用API，使用选择的模型
                 response = completion(
-                    model="anthropic/claude-3-5-sonnet-20241022",
+                    model=selected_model,
                     max_tokens=1000,
                     messages=messages,
                     tools=available_tools
@@ -217,7 +231,7 @@ class MCPClient:
                             # 处理模型的响应
                             try:
                                 response = completion(
-                                    model="anthropic/claude-3-5-sonnet-20241022",
+                                    model=selected_model,
                                     max_tokens=1000,
                                     messages=messages,
                                     tools=available_tools

@@ -12,11 +12,68 @@
             padding: 0;
             color: #262626;
         }
+        /* 顶部菜单栏样式 */
+        .top-navbar {
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .app-logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1890ff;
+        }
+        .model-selector-container {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        .model-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .model-selector label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #595959;
+        }
+        .model-selector select {
+            padding: 6px 12px;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 14px;
+            min-width: 160px;
+            color: #262626;
+            outline: none;
+        }
+        .model-selector select:focus {
+            border-color: #40a9ff;
+            box-shadow: 0 0 0 2px rgba(24,144,255,0.1);
+        }
+        .model-apply-btn {
+            padding: 6px 16px;
+            background: #1890ff;
+            color: #fff;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .model-apply-btn:hover {
+            background: #40a9ff;
+        }
         .main-layout {
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            margin: 32px auto;
+            margin: 24px auto;
             max-width: 1200px;
             gap: 24px;
         }
@@ -294,6 +351,26 @@
     </style>
 </head>
 <body>
+    <!-- 顶部菜单栏 -->
+    <div class="top-navbar">
+        <div class="app-logo">多模型MCP客户端</div>
+        <div class="model-selector-container">
+            <div class="model-selector">
+                <label for="platform-select">平台:</label>
+                <select id="platform-select">
+                    <option value="">选择平台</option>
+                </select>
+            </div>
+            <div class="model-selector">
+                <label for="model-select">模型:</label>
+                <select id="model-select" disabled>
+                    <option value="">请先选择平台</option>
+                </select>
+            </div>
+            <button class="model-apply-btn" id="applyModelBtn">应用</button>
+        </div>
+    </div>
+
     <div class="main-layout">
         <div class="sidebar">
             <div class="session-list-title">会话列表</div>
@@ -325,8 +402,149 @@
         const serverList = document.getElementById('serverList');
         const toolList = document.getElementById('toolList');
         const toolListTitle = document.getElementById('toolListTitle');
+        const platformSelect = document.getElementById('platform-select');
+        const modelSelect = document.getElementById('model-select');
+        const applyModelBtn = document.getElementById('applyModelBtn');
+        
         let serversData = [];
         const CHAT_HISTORY_KEY = 'mcp_chat_history';
+        const SELECTED_MODEL_KEY = 'mcp_selected_model';
+
+        let selectedPlatform = '';
+        let selectedModel = '';
+
+        // 从后端获取平台列表
+        function fetchPlatforms() {
+            // 清空平台选择器
+            platformSelect.innerHTML = '<option value="">选择平台</option>';
+            
+            // 禁用模型选择器
+            modelSelect.innerHTML = '<option value="">请先选择平台</option>';
+            modelSelect.disabled = true;
+            
+            // 调用后端API获取平台列表
+            fetch('/api/platforms')
+                .then(res => res.json())
+                .then(platforms => {
+                    // 填充平台选择器
+                    platforms.forEach(platform => {
+                        const option = document.createElement('option');
+                        option.value = platform.id;
+                        option.textContent = platform.name;
+                        platformSelect.appendChild(option);
+                    });
+                    
+                    // 若之前已选择平台，尝试恢复选择
+                    if (selectedPlatform) {
+                        platformSelect.value = selectedPlatform;
+                        if (platformSelect.value === selectedPlatform) {
+                            fetchModels(selectedPlatform);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('获取平台列表失败:', error);
+                    appendMessage('获取平台列表失败，请刷新页面重试', 'bot', false);
+                });
+        }
+        
+        // 根据选择的平台获取模型列表
+        function fetchModels(platform) {
+            if (!platform) {
+                modelSelect.innerHTML = '<option value="">请先选择平台</option>';
+                modelSelect.disabled = true;
+                return;
+            }
+            
+            // 临时禁用模型选择器并显示加载状态
+            modelSelect.innerHTML = '<option value="">加载中...</option>';
+            modelSelect.disabled = true;
+            
+            // 调用后端API获取该平台下的模型列表
+            fetch(`/api/models?platform=${encodeURIComponent(platform)}`)
+                .then(res => res.json())
+                .then(models => {
+                    // 清空并填充模型选择器
+                    modelSelect.innerHTML = '';
+                    if (models.length === 0) {
+                        modelSelect.innerHTML = '<option value="">无可用模型</option>';
+                        modelSelect.disabled = true;
+                        return;
+                    }
+                    
+                    models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.name;
+                        modelSelect.appendChild(option);
+                    });
+                    
+                    // 启用模型选择器
+                    modelSelect.disabled = false;
+                    
+                    // 如果之前已选择模型且该模型在列表中，恢复选择
+                    if (selectedModel) {
+                        const modelExists = [...modelSelect.options].some(opt => opt.value === selectedModel);
+                        if (modelExists) {
+                            modelSelect.value = selectedModel;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('获取模型列表失败:', error);
+                    modelSelect.innerHTML = '<option value="">获取失败</option>';
+                    modelSelect.disabled = true;
+                });
+        }
+
+        // 加载模型选择
+        function loadModelSelection() {
+            try {
+                const savedConfig = JSON.parse(localStorage.getItem(SELECTED_MODEL_KEY) || '{}');
+                selectedPlatform = savedConfig.platform || '';
+                selectedModel = savedConfig.model || '';
+                
+                // 加载平台列表，而不是直接设置值
+                fetchPlatforms();
+            } catch (error) {
+                console.error('加载模型选择失败', error);
+                fetchPlatforms(); // 出错时也尝试获取平台列表
+            }
+        }
+
+        // 保存模型选择
+        function saveModelSelection() {
+            const platform = platformSelect.value;
+            const model = modelSelect.value;
+            
+            if (platform && model) {
+                selectedPlatform = platform;
+                selectedModel = model;
+                
+                localStorage.setItem(SELECTED_MODEL_KEY, JSON.stringify({
+                    platform: platform,
+                    model: model
+                }));
+                
+                // 显示提示消息
+                const platformName = platformSelect.options[platformSelect.selectedIndex].text;
+                const modelName = modelSelect.options[modelSelect.selectedIndex].text;
+                appendMessage(`已切换到 ${platformName} ${modelName}`, 'bot', false);
+            }
+        }
+
+        // 事件监听
+        platformSelect.addEventListener('change', function() {
+            const platform = this.value;
+            // 切换平台时清除模型选择
+            selectedModel = '';
+            fetchModels(platform);
+        });
+
+        applyModelBtn.addEventListener('click', saveModelSelection);
+
+        // 初始化时加载模型选择
+        loadModelSelection();
 
         // 会话管理
         const SESSION_LIST_KEY = 'mcp_session_list';
@@ -742,8 +960,14 @@
             currentToolCallId = null;
             messageQueue = [];
             
+            // 构建包含模型信息的URL
+            let chatUrl = `/chat_stream?message=${encodeURIComponent(text)}`;
+            if (selectedPlatform && selectedModel) {
+                chatUrl += `&platform=${encodeURIComponent(selectedPlatform)}&model=${encodeURIComponent(selectedModel)}`;
+            }
+            
             // 使用 EventSource 建立 SSE 连接
-            const eventSource = new EventSource(`/chat_stream?message=${encodeURIComponent(text)}`);
+            const eventSource = new EventSource(chatUrl);
             
             // 存储当前消息状态
             let pendingToolCall = null;
