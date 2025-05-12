@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 import uvicorn
 from fastapi import FastAPI
@@ -20,9 +20,10 @@ class ChatRequest(BaseModel):
     message: str
 
 class ChatResponseItem(BaseModel):
-    type: str  # "text", "audio", "image" 等
+    type: str  # "text", "audio", "image", "tool_call" 等
     content: str  # 内容、URL或Base64编码的数据
     alt_text: Optional[str] = None  # 可选的替代文本
+    tool_results: Optional[List[Dict[str, Any]]] = None  # 工具调用结果列表
 
 class ChatResponse(BaseModel):
     items: list[ChatResponseItem]
@@ -75,7 +76,8 @@ async def chat_api(request: Request, chat_request: ChatRequest):
             ChatResponseItem(
                 type=item.type,
                 content=item.content,
-                alt_text=item.alt_text if item.alt_text is not None else None
+                alt_text=item.alt_text if item.alt_text is not None else None,
+                tool_results=item.tool_results
             )
         )
     

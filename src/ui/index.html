@@ -478,6 +478,7 @@
                     msg.toolCalls.forEach(tool => {
                         const toolCallDiv = document.createElement('div');
                         toolCallDiv.className = 'tool-call';
+                        toolCallDiv.dataset.toolName = tool.toolName;
                         
                         const headerDiv = document.createElement('div');
                         headerDiv.className = 'tool-call-header';
@@ -583,13 +584,13 @@
             
             const toggleDiv = document.createElement('div');
             toggleDiv.className = 'tool-call-toggle';
-            toggleDiv.textContent = '折叠';
+            toggleDiv.textContent = '展开';
             
             headerDiv.appendChild(nameDiv);
             headerDiv.appendChild(toggleDiv);
             
             const bodyDiv = document.createElement('div');
-            bodyDiv.className = 'tool-call-body';
+            bodyDiv.className = 'tool-call-body collapsed';
             bodyDiv.innerHTML = '<div style="color:#8c8c8c;font-style:italic;">等待工具返回结果...</div>';
             
             headerDiv.onclick = function() {
@@ -628,7 +629,7 @@
                     toolCalls.push({
                         toolName,
                         toolResult,
-                        collapsed: false
+                        collapsed: true
                     });
                 });
                 
@@ -767,6 +768,9 @@
                             break;
                         case 'audio':
                             appendAudio(item.content, 'bot');
+                            break;
+                        case 'tool_call':
+                            appendToolCallWithResults(item.content, item.tool_results || [], 'bot');
                             break;
                         default:
                             appendMessage(item.content, 'bot');
@@ -916,6 +920,102 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
             if (save) saveChatMessage({type: 'audio', content: src, sender});
+        }
+
+        // 添加工具调用及其结果
+        function appendToolCallWithResults(toolName, results, sender, save = true) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + sender;
+            msgDiv.dataset.messageType = 'toolcall';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            const toolCallDiv = document.createElement('div');
+            toolCallDiv.className = 'tool-call';
+            toolCallDiv.dataset.toolName = toolName;
+            
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'tool-call-header';
+            
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'tool-call-name';
+            nameDiv.textContent = toolName;
+            
+            const toggleDiv = document.createElement('div');
+            toggleDiv.className = 'tool-call-toggle';
+            toggleDiv.textContent = '展开';
+            
+            headerDiv.appendChild(nameDiv);
+            headerDiv.appendChild(toggleDiv);
+            
+            const bodyDiv = document.createElement('div');
+            bodyDiv.className = 'tool-call-body collapsed';
+            
+            // 处理工具结果
+            if (results.length > 0) {
+                results.forEach(result => {
+                    if (result.type === 'image') {
+                        const img = document.createElement('img');
+                        img.src = result.content;
+                        img.alt = result.alt_text || '图片';
+                        img.style.maxWidth = '100%';
+                        img.style.borderRadius = '4px';
+                        img.style.marginBottom = '8px';
+                        bodyDiv.appendChild(img);
+                        
+                        if (result.alt_text && result.alt_text !== '图片') {
+                            const caption = document.createElement('div');
+                            caption.textContent = result.alt_text;
+                            caption.style.marginTop = '4px';
+                            caption.style.marginBottom = '8px';
+                            caption.style.fontSize = '13px';
+                            caption.style.color = '#8c8c8c';
+                            bodyDiv.appendChild(caption);
+                        }
+                    } else if (result.type === 'audio') {
+                        const audio = document.createElement('audio');
+                        audio.controls = true;
+                        audio.src = result.content;
+                        audio.style.marginBottom = '8px';
+                        bodyDiv.appendChild(audio);
+                    } else {
+                        // 文本结果
+                        const textDiv = document.createElement('div');
+                        textDiv.innerHTML = renderMessageContent(result.content);
+                        textDiv.style.marginBottom = '8px';
+                        bodyDiv.appendChild(textDiv);
+                    }
+                });
+            } else {
+                bodyDiv.innerHTML = '<div style="color:#8c8c8c;font-style:italic;">无结果</div>';
+            }
+            
+            headerDiv.onclick = function() {
+                bodyDiv.classList.toggle('collapsed');
+                toggleDiv.textContent = bodyDiv.classList.contains('collapsed') ? '展开' : '折叠';
+            };
+            
+            toolCallDiv.appendChild(headerDiv);
+            toolCallDiv.appendChild(bodyDiv);
+            contentDiv.appendChild(toolCallDiv);
+            msgDiv.appendChild(contentDiv);
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            if (save) {
+                const toolCalls = [{
+                    toolName,
+                    toolResult: bodyDiv.innerHTML,
+                    collapsed: true
+                }];
+                
+                saveChatMessage({
+                    type: 'toolcall',
+                    toolCalls,
+                    sender
+                });
+            }
         }
     </script>
 </body>

@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List, Optional
+from typing import List, Dict, Any, Optional
 
 from anthropic import Anthropic
 from anthropic._exceptions import OverloadedError, RateLimitError, APIError
@@ -12,10 +12,11 @@ load_dotenv()  # 加载 .env 文件
 
 # 定义响应项数据结构（与main.py中的ChatResponseItem保持一致）
 class ResponseItem:
-    def __init__(self, type: str, content: str, alt_text: Optional[str] = None):
+    def __init__(self, type: str, content: str, alt_text: Optional[str] = None, tool_results: Optional[List[Dict[str, Any]]] = None):
         self.type = type
         self.content = content
         self.alt_text = alt_text
+        self.tool_results = tool_results  # 用于存储工具调用的结果列表
 
 class MCPClient:
     def __init__(self, mcp_composer: DownstreamController):
@@ -65,12 +66,13 @@ class MCPClient:
                         tool_name = content.name
                         tool_args = content.input
                         real_tool_name = self.mcp_composer.get_tool_by_control_name(tool_name).tool.name
+                        
+                        # 创建一个工具调用结果列表
+                        tool_results = []
+                        
                         try:
                             result = await (self.mcp_composer.get_server_by_tool_name(tool_name)
                                           .session.call_tool(real_tool_name, tool_args))
-                            # 添加工具调用的记录
-                            tool_call_text = f"调用工具: {tool_name}"
-                            response_items.append(ResponseItem(type="text", content=tool_call_text))
                             
                             # 处理工具返回的结果
                             # 检查工具结果是否包含图像或音频内容
@@ -78,26 +80,37 @@ class MCPClient:
                                 for item in result.content:
                                     if hasattr(item, 'type') and item.type == 'image':
                                         if hasattr(item, 'source') and hasattr(item.source, 'url'):
-                                            response_items.append(ResponseItem(
-                                                type="image",
-                                                content=item.source.url,
-                                                alt_text=getattr(item, 'alt', None)
-                                            ))
+                                            tool_results.append({
+                                                "type": "image",
+                                                "content": item.source.url,
+                                                "alt_text": getattr(item, 'alt', None)
+                                            })
                                         continue
                                     elif hasattr(item, 'type') and item.type == 'audio':
                                         if hasattr(item, 'source') and hasattr(item.source, 'url'):
-                                            response_items.append(ResponseItem(
-                                                type="audio",
-                                                content=item.source.url
-                                            ))
+                                            tool_results.append({
+                                                "type": "audio",
+                                                "content": item.source.url
+                                            })
                                         continue
                                     # 默认处理为文本
                                     if hasattr(item, 'text'):
-                                        response_items.append(ResponseItem(type="text", content=item.text))
+                                        tool_results.append({
+                                            "type": "text",
+                                            "content": item.text
+                                        })
                         except Exception as tool_error:
-                            error_msg = f"工具调用失败: {str(tool_error)}"
-                            response_items.append(ResponseItem(type="text", content=error_msg))
-                            continue
+                            tool_results.append({
+                                "type": "text",
+                                "content": f"工具调用失败: {str(tool_error)}"
+                            })
+                        
+                        # 添加工具调用及其结果作为一个组合项
+                        response_items.append(ResponseItem(
+                            type="tool_call",
+                            content=tool_name,  # 工具名称
+                            tool_results=tool_results  # 工具结果列表
+                        ))
                             
                         assistant_message_content.append(content)
                         messages.append({"role": "assistant", "content": assistant_message_content})
