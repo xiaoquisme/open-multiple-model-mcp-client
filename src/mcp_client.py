@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from anthropic._exceptions import OverloadedError, RateLimitError, APIError
 from dotenv import load_dotenv
 from litellm import completion
+from mcp import Tool
 
 from api.downstream_controller import DownstreamController
 
@@ -29,12 +30,35 @@ class MCPClient:
         self.retry_delay = 2  # 重试间隔（秒）
 
     # 抽取共同的工具准备逻辑
-    def _prepare_tools(self):
-        """准备可用工具列表"""
+    def _prepare_tools(self, platform="anthropic"):
+        """准备可用工具列表
+        
+        Args:
+            platform: 平台类型，如"anthropic"或"openai"
+            
+        Returns:
+            适用于指定平台的工具列表
+        """
         available_tools = []
         for tool in self.mcp_composer.tools_map.values():
             tool_obj = tool.to_new_name_tool()
-            # 创建干净的工具定义，符合Anthropic预期的格式
+            clean_tool = self._format_tool_for_platform(tool_obj, platform)
+            available_tools.append(clean_tool)
+        return available_tools
+
+    @staticmethod
+    def _format_tool_for_platform(tool_obj: Tool, platform: str) -> Dict:
+        """根据不同平台格式化工具
+        
+        Args:
+            tool_obj: 工具对象
+            platform: 平台类型，如"anthropic"或"openai"
+            
+        Returns:
+            适用于指定平台的工具格式
+        """
+        if platform == "anthropic":
+            # Anthropic格式
             clean_tool = {
                 "name": tool_obj.name,
                 "description": tool_obj.description,
@@ -44,8 +68,35 @@ class MCPClient:
             if isinstance(clean_tool["input_schema"], dict) and "custom" in clean_tool["input_schema"]:
                 if "annotations" in clean_tool["input_schema"]["custom"]:
                     del clean_tool["input_schema"]["custom"]["annotations"]
-            available_tools.append(clean_tool)
-        return available_tools
+            return clean_tool
+        if platform == "openai":
+            # OpenAI格式
+            clean_tool = {
+                "type": "function",
+                "function": {
+                    "name": tool_obj.name,
+                    "description": tool_obj.description,
+                    "parameters": tool_obj.inputSchema
+                }
+            }
+            # 移除可能导致错误的意外字段
+            if isinstance(clean_tool["function"]["parameters"], dict) and "custom" in clean_tool["function"]["parameters"]:
+                if "annotations" in clean_tool["function"]["parameters"]["custom"]:
+                    del clean_tool["function"]["parameters"]["custom"]["annotations"]
+            return clean_tool
+
+        # 其他平台的默认格式
+        clean_tool = {
+            "name": tool_obj.name,
+            "description": tool_obj.description,
+            "parameters": tool_obj.inputSchema
+        }
+        # 移除可能导致错误的意外字段
+        if isinstance(clean_tool["parameters"], dict) and "custom" in clean_tool["parameters"]:
+            if "annotations" in clean_tool["parameters"]["custom"]:
+                del clean_tool["parameters"]["custom"]["annotations"]
+
+        return clean_tool
     
     # 抽取工具调用逻辑
     async def _call_tool(self, tool_name, tool_args):
@@ -125,7 +176,10 @@ class MCPClient:
     async def process_query_stream(self, query: str, platform: Optional[str] = None, model: Optional[str] = None) -> AsyncGenerator[ResponseItem, None]:
         """处理查询并以流的形式逐个返回响应项"""
         messages = [{"role": "user", "content": query}]
-        available_tools = self._prepare_tools()
+        
+        # 默认使用anthropic作为平台
+        platform = platform or "anthropic"
+        available_tools = self._prepare_tools(platform)
         
         # 根据选择的平台和模型确定要使用的模型
         selected_model = "anthropic/claude-3-5-sonnet-20241022"  # 默认模型
