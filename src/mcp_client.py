@@ -112,21 +112,19 @@ class MCPClient:
             # 处理工具返回的结果
             if result.content and isinstance(result.content, list):
                 for item in result.content:
-                    if hasattr(item, 'type') and item.type == 'image':
-                        if hasattr(item, 'source') and hasattr(item.source, 'url'):
-                            tool_results.append({
-                                "type": "image",
-                                "content": item.source.url,
-                                "alt_text": getattr(item, 'alt', None)
-                            })
-                            continue
-                    elif hasattr(item, 'type') and item.type == 'audio':
-                        if hasattr(item, 'source') and hasattr(item.source, 'url'):
-                            tool_results.append({
-                                "type": "audio",
-                                "content": item.source.url
-                            })
-                            continue
+                    tool_call_response = json.loads(item.text)
+                    if tool_call_response['type'] == 'image':
+                        tool_results.append({
+                            "type": "image",
+                            "content": tool_call_response['content']
+                        })
+                        continue
+                    elif tool_call_response['type'] == 'audio':
+                        tool_results.append({
+                            "type": "audio",
+                            "content": tool_call_response['content']
+                        })
+                        continue
                     # 默认处理为文本
                     if hasattr(item, 'text'):
                         tool_results.append({
@@ -264,12 +262,11 @@ class MCPClient:
                             if result.content:
                                 if isinstance(result.content, list):
                                     for item in result.content:
-                                        if hasattr(item, 'text'):
-                                            tool_result_content += item.text + "\n"
-                                        elif isinstance(item, dict):
-                                            tool_result_content += json.dumps(item) + "\n"
-                                        else:
-                                            tool_result_content += str(item) + "\n"
+                                        tool_result_response = json.loads(item.text)
+                                        if tool_result_response['type'] in ['image', 'audio']:
+                                            del tool_result_response['content']
+                                            item.text = json.dumps(tool_result_response)
+                                        tool_result_content += item.text + "\n"
                                 elif isinstance(result.content, str):
                                     tool_result_content = result.content
                                 else:
@@ -292,8 +289,12 @@ class MCPClient:
                                 )
                                 # Handle the model's response after the tool call
                                 if response.choices and len(response.choices) > 0:
-                                    if response.choices[0].message.content:
-                                        yield ResponseItem(type="text", content=response.choices[0].message.content)
+                                    if not response.choices[0].message.content:
+                                        yield ResponseItem(type="text", content="模型没有返回内容")
+                                    yield ResponseItem(type="text", content=response.choices[0].message.content)
+                                    for item in tool_results:
+                                        if item["type"] in ["image", "audio"]:
+                                            yield ResponseItem(type=item['type'], content=item['content'])
                             except (OverloadedError, RateLimitError, APIError) as api_error:
                                 yield ResponseItem(type="text", content=f"模型响应失败: {str(api_error)}")
                 

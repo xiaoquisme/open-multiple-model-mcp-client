@@ -1117,7 +1117,12 @@
             contentDiv.className = 'message-content';
             
             const img = document.createElement('img');
-            img.src = src;
+            // 处理base64图片内容，如果没有data:前缀则添加
+            if (src && !src.startsWith('data:')) {
+                img.src = `data:image/png;base64,${src}`;
+            } else {
+                img.src = src;
+            }
             img.alt = alt;
             img.style.maxWidth = '100%';
             img.style.borderRadius = '4px';
@@ -1165,7 +1170,12 @@
             
             const audio = document.createElement('audio');
             audio.controls = true;
-            audio.src = src;
+            // 处理base64音频内容，如果没有data:前缀则添加
+            if (src && !src.startsWith('data:')) {
+                audio.src = `data:audio/mp3;base64,${src}`;
+            } else {
+                audio.src = src;
+            }
             
             contentDiv.appendChild(audio);
             msgDiv.appendChild(contentDiv);
@@ -1210,7 +1220,12 @@
                 results.forEach(result => {
                     if (result.type === 'image') {
                         const img = document.createElement('img');
-                        img.src = result.content;
+                        // 处理base64图片内容，如果没有data:前缀则添加
+                        if (result.content) {
+                            img.src = `data:image/png;base64,${result.content}`;
+                        } else {
+                            img.src = result.content;
+                        }
                         img.alt = result.alt_text || '图片';
                         img.style.maxWidth = '100%';
                         img.style.borderRadius = '4px';
@@ -1229,8 +1244,14 @@
                     } else if (result.type === 'audio') {
                         const audio = document.createElement('audio');
                         audio.controls = true;
-                        audio.src = result.content;
+                        // 处理base64音频内容，如果没有data:前缀则添加
+                        if (result.content) {
+                            audio.src = `data:audio/mp3;base64,${result.content}`;
+                        } else {
+                            audio.src = result.content;
+                        }
                         audio.style.marginBottom = '8px';
+                        audio.type = 'audio/mp3';
                         bodyDiv.appendChild(audio);
                     } else {
                         // 文本结果

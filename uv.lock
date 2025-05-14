@@ -1,7 +1,7 @@
 version = 1
 requires-python = ">=3.12"
 
-``[[package]]
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
