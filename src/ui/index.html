@@ -723,7 +723,7 @@
                         
                         const nameDiv = document.createElement('div');
                         nameDiv.className = 'tool-call-name';
-                        nameDiv.textContent = tool.toolName;
+                        nameDiv.textContent = "🔧 " + tool.toolName;
                         
                         const toggleDiv = document.createElement('div');
                         toggleDiv.className = 'tool-call-toggle';
@@ -734,7 +734,60 @@
                         
                         const bodyDiv = document.createElement('div');
                         bodyDiv.className = 'tool-call-body' + (tool.collapsed ? ' collapsed' : '');
-                        bodyDiv.innerHTML = tool.toolResult;
+                        
+                        // 添加工具参数（如果存在）
+                        if (tool.toolArgs && tool.toolArgs !== "{}") {
+                            const argsDiv = document.createElement('div');
+                            argsDiv.className = 'tool-call-args';
+                            argsDiv.style.marginBottom = '12px';
+                            argsDiv.style.padding = '8px';
+                            argsDiv.style.background = '#f0f7ff';
+                            argsDiv.style.borderRadius = '4px';
+                            argsDiv.style.borderLeft = '3px solid #1890ff';
+                            
+                            const argsTitle = document.createElement('div');
+                            argsTitle.style.fontSize = '12px';
+                            argsTitle.style.fontWeight = 'bold';
+                            argsTitle.style.marginBottom = '4px';
+                            argsTitle.style.color = '#1890ff';
+                            argsTitle.textContent = '请求参数:';
+                            argsDiv.appendChild(argsTitle);
+                            
+                            try {
+                                const argsContent = document.createElement('pre');
+                                argsContent.style.margin = '0';
+                                argsContent.style.fontSize = '12px';
+                                argsContent.style.whiteSpace = 'pre-wrap';
+                                argsContent.style.wordBreak = 'break-all';
+                                
+                                // 尝试格式化JSON
+                                const formattedArgs = JSON.stringify(JSON.parse(tool.toolArgs), null, 2);
+                                argsContent.textContent = formattedArgs;
+                                argsDiv.appendChild(argsContent);
+                            } catch (e) {
+                                // 如果解析失败，直接显示原始内容
+                                const argsContent = document.createElement('div');
+                                argsContent.textContent = tool.toolArgs;
+                                argsDiv.appendChild(argsContent);
+                            }
+                            
+                            bodyDiv.appendChild(argsDiv);
+                        }
+                        
+                        // 设置工具结果
+                        if (tool.toolResult && tool.toolResult.trim() !== "") {
+                            // 直接使用保存的HTML内容 - 直接插入而不是解析
+                            const resultsContainerDiv = document.createElement('div');
+                            resultsContainerDiv.innerHTML = tool.toolResult;
+                            bodyDiv.appendChild(resultsContainerDiv.firstChild);
+                        } else {
+                            const emptyDiv = document.createElement('div');
+                            emptyDiv.style.color = '#8c8c8c';
+                            emptyDiv.style.fontStyle = 'italic';
+                            emptyDiv.style.fontSize = '12px';
+                            emptyDiv.textContent = '无结果';
+                            bodyDiv.appendChild(emptyDiv);
+                        }
                         
                         headerDiv.onclick = function() {
                             bodyDiv.classList.toggle('collapsed');
@@ -773,14 +826,14 @@
             try {
                 if (typeof content === 'string' && (content.trim().startsWith('{') || content.trim().startsWith('['))) {
                     const obj = JSON.parse(content);
-                    return `<pre style="white-space:pre-wrap;word-break:break-all;background:#f6f8fa;border-radius:6px;padding:8px 12px;">${JSON.stringify(obj, null, 2)}</pre>`;
+                    return `<pre style="white-space:pre-wrap;word-break:break-all;background:#f6f8fa;border-radius:6px;padding:8px 12px;margin:0;font-size:12px;overflow:auto;">${JSON.stringify(obj, null, 2)}</pre>`;
                 }
             } catch {}
             // 支持markdown的换行、代码块、粗体等简单格式
             let html = content
                 .replace(/\n/g, '<br>')
-                .replace(/```([\s\S]*?)```/g, '<pre style="background:#f6f8fa;border-radius:6px;padding:8px 12px;">$1</pre>')
-                .replace(/`([^`]+)`/g, '<code style="background:#f6f8fa;border-radius:4px;padding:2px 4px;">$1</code>')
+                .replace(/```([\s\S]*?)```/g, '<pre style="background:#f6f8fa;border-radius:6px;padding:8px 12px;margin:4px 0;font-size:12px;overflow:auto;">$1</pre>')
+                .replace(/`([^`]+)`/g, '<code style="background:#f6f8fa;border-radius:4px;padding:2px 4px;font-size:12px;">$1</code>')
                 .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
             return html;
         }
@@ -818,7 +871,7 @@
             
             const nameDiv = document.createElement('div');
             nameDiv.className = 'tool-call-name';
-            nameDiv.textContent = toolName;
+            nameDiv.textContent = "🔧 " + toolName;
             
             const toggleDiv = document.createElement('div');
             toggleDiv.className = 'tool-call-toggle';
@@ -829,7 +882,74 @@
             
             const bodyDiv = document.createElement('div');
             bodyDiv.className = 'tool-call-body collapsed';
-            bodyDiv.innerHTML = '<div style="color:#8c8c8c;font-style:italic;">等待工具返回结果...</div>';
+            
+            // 查找工具参数
+            const toolArgs = pendingToolCall && pendingToolCall.toolName === toolName ? 
+                            pendingToolCall.toolArgs : "{}";
+            
+            // 添加工具参数显示
+            if (toolArgs && toolArgs !== "{}") {
+                const argsDiv = document.createElement('div');
+                argsDiv.className = 'tool-call-args';
+                argsDiv.style.marginBottom = '12px';
+                argsDiv.style.padding = '8px';
+                argsDiv.style.background = '#f0f7ff';
+                argsDiv.style.borderRadius = '4px';
+                argsDiv.style.borderLeft = '3px solid #1890ff';
+                
+                const argsTitle = document.createElement('div');
+                argsTitle.style.fontSize = '12px';
+                argsTitle.style.fontWeight = 'bold';
+                argsTitle.style.marginBottom = '4px';
+                argsTitle.style.color = '#1890ff';
+                argsTitle.textContent = '请求参数:';
+                argsDiv.appendChild(argsTitle);
+                
+                try {
+                    const argsContent = document.createElement('pre');
+                    argsContent.style.margin = '0';
+                    argsContent.style.fontSize = '12px';
+                    argsContent.style.whiteSpace = 'pre-wrap';
+                    argsContent.style.wordBreak = 'break-all';
+                    
+                    // 尝试格式化JSON
+                    const formattedArgs = JSON.stringify(JSON.parse(toolArgs), null, 2);
+                    argsContent.textContent = formattedArgs;
+                    argsDiv.appendChild(argsContent);
+                } catch (e) {
+                    // 如果解析失败，直接显示原始内容
+                    const argsContent = document.createElement('div');
+                    argsContent.textContent = toolArgs;
+                    argsDiv.appendChild(argsContent);
+                }
+                
+                bodyDiv.appendChild(argsDiv);
+            }
+            
+            // 创建结果容器，使用与请求参数相同的样式
+            const resultsDiv = document.createElement('div');
+            resultsDiv.className = 'tool-call-results';
+            resultsDiv.style.padding = '8px';
+            resultsDiv.style.background = '#f0f7ff';
+            resultsDiv.style.borderRadius = '4px';
+            resultsDiv.style.borderLeft = '3px solid #1890ff';
+            
+            const resultsTitle = document.createElement('div');
+            resultsTitle.style.fontSize = '12px';
+            resultsTitle.style.fontWeight = 'bold';
+            resultsTitle.style.marginBottom = '4px';
+            resultsTitle.style.color = '#1890ff';
+            resultsTitle.textContent = '返回结果:';
+            resultsDiv.appendChild(resultsTitle);
+            
+            const waitingDiv = document.createElement('div');
+            waitingDiv.style.color = '#8c8c8c';
+            waitingDiv.style.fontStyle = 'italic';
+            waitingDiv.style.fontSize = '12px';
+            waitingDiv.textContent = '等待工具返回结果...';
+            resultsDiv.appendChild(waitingDiv);
+            
+            bodyDiv.appendChild(resultsDiv);
             
             headerDiv.onclick = function() {
                 bodyDiv.classList.toggle('collapsed');
@@ -839,15 +959,30 @@
             toolCallDiv.appendChild(headerDiv);
             toolCallDiv.appendChild(bodyDiv);
             contentDiv.appendChild(toolCallDiv);
-            
+            msgDiv.appendChild(contentDiv);
+            chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+            
             // 暂不保存，等工具结果返回后一起保存
-            return bodyDiv; // 返回工具结果容器以便后续更新
+            return resultsDiv; // 返回结果容器以便后续更新
         }
         
         // 更新工具返回结果
-        function updateToolCallResult(result, bodyDiv) {
-            bodyDiv.innerHTML = renderMessageContent(result);
+        function updateToolCallResult(result, resultsDiv) {
+            // 清除等待提示
+            const waitingDiv = resultsDiv.querySelector('div[style*="font-style: italic"]');
+            if (waitingDiv) waitingDiv.remove();
+            
+            // 创建内容容器
+            const resultContent = document.createElement('div');
+            
+            // 添加结果内容 - 直接作为文本处理，不尝试解析JSON
+            const textDiv = document.createElement('div');
+            textDiv.innerHTML = renderMessageContent(result);
+            textDiv.style.fontSize = '12px';
+            resultContent.appendChild(textDiv);
+            
+            resultsDiv.appendChild(resultContent);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
             // 如果消息队列中有待处理的消息，继续处理
@@ -863,10 +998,15 @@
                 
                 msgDiv.querySelectorAll('.tool-call').forEach(toolCallEl => {
                     const toolName = toolCallEl.dataset.toolName;
-                    const toolResult = toolCallEl.querySelector('.tool-call-body').innerHTML;
+                    // 获取工具参数部分和结果部分
+                    const argsDiv = toolCallEl.querySelector('.tool-call-args');
+                    const resultsDiv = toolCallEl.querySelector('.tool-call-results');
+                    
                     toolCalls.push({
                         toolName,
-                        toolResult,
+                        toolResult: resultsDiv ? resultsDiv.outerHTML : '',
+                        toolArgs: pendingToolCall && pendingToolCall.toolName === toolName ? 
+                                  pendingToolCall.toolArgs : "{}",
                         collapsed: true
                     });
                 });
@@ -878,6 +1018,7 @@
                 });
                 
                 currentToolCallId = null;
+                pendingToolCall = null;
             }
         }
         
@@ -1001,11 +1142,12 @@
                     // 工具调用开始
                     pendingToolCall = {
                         toolName: data.content,
+                        toolArgs: data.tool_args || "{}",
                         results: []
                     };
                 } else if (data.type === 'tool_call') {
                     // 工具调用结果
-                    appendToolCallWithResults(data.content, data.tool_results || [], 'bot');
+                    appendToolCallWithResults(data.content, data.tool_results || [], data.tool_args || "{}", 'bot');
                 } else if (data.type === 'text') {
                     // 文本消息
                     appendMessage(data.content, 'bot');
@@ -1186,7 +1328,7 @@
         }
 
         // 添加工具调用及其结果
-        function appendToolCallWithResults(toolName, results, sender, save = true) {
+        function appendToolCallWithResults(toolName, results, toolArgs, sender, save = true) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message ' + sender;
             msgDiv.dataset.messageType = 'toolcall';
@@ -1215,8 +1357,67 @@
             const bodyDiv = document.createElement('div');
             bodyDiv.className = 'tool-call-body collapsed';
             
+            // 添加工具参数（如果存在）
+            if (toolArgs && toolArgs !== "{}") {
+                const argsDiv = document.createElement('div');
+                argsDiv.className = 'tool-call-args';
+                argsDiv.style.marginBottom = '12px';
+                argsDiv.style.padding = '8px';
+                argsDiv.style.background = '#f0f7ff';
+                argsDiv.style.borderRadius = '4px';
+                argsDiv.style.borderLeft = '3px solid #1890ff';
+                
+                const argsTitle = document.createElement('div');
+                argsTitle.style.fontSize = '12px';
+                argsTitle.style.fontWeight = 'bold';
+                argsTitle.style.marginBottom = '4px';
+                argsTitle.style.color = '#1890ff';
+                argsTitle.textContent = '请求参数:';
+                argsDiv.appendChild(argsTitle);
+                
+                try {
+                    const argsContent = document.createElement('pre');
+                    argsContent.style.margin = '0';
+                    argsContent.style.fontSize = '12px';
+                    argsContent.style.whiteSpace = 'pre-wrap';
+                    argsContent.style.wordBreak = 'break-all';
+                    
+                    // 尝试格式化JSON
+                    const formattedArgs = JSON.stringify(JSON.parse(toolArgs), null, 2);
+                    argsContent.textContent = formattedArgs;
+                    argsDiv.appendChild(argsContent);
+                } catch (e) {
+                    // 如果解析失败，直接显示原始内容
+                    const argsContent = document.createElement('div');
+                    argsContent.textContent = toolArgs;
+                    argsDiv.appendChild(argsContent);
+                }
+                
+                bodyDiv.appendChild(argsDiv);
+            }
+            
             // 处理工具结果
             if (results.length > 0) {
+                // 添加结果容器
+                const resultsDiv = document.createElement('div');
+                resultsDiv.className = 'tool-call-results';
+                resultsDiv.style.padding = '8px';
+                resultsDiv.style.background = '#f0f7ff';
+                resultsDiv.style.borderRadius = '4px';
+                resultsDiv.style.borderLeft = '3px solid #1890ff';
+                
+                // 添加结果标题
+                const resultsTitle = document.createElement('div');
+                resultsTitle.style.fontSize = '12px';
+                resultsTitle.style.fontWeight = 'bold';
+                resultsTitle.style.marginBottom = '4px';
+                resultsTitle.style.color = '#1890ff';
+                resultsTitle.textContent = '返回结果:';
+                resultsDiv.appendChild(resultsTitle);
+                
+                // 添加结果内容
+                const resultsContent = document.createElement('div');
+                
                 results.forEach(result => {
                     if (result.type === 'image') {
                         const img = document.createElement('img');
@@ -1230,7 +1431,7 @@
                         img.style.maxWidth = '100%';
                         img.style.borderRadius = '4px';
                         img.style.marginBottom = '8px';
-                        bodyDiv.appendChild(img);
+                        resultsContent.appendChild(img);
                         
                         if (result.alt_text && result.alt_text !== '图片') {
                             const caption = document.createElement('div');
@@ -1239,7 +1440,7 @@
                             caption.style.marginBottom = '8px';
                             caption.style.fontSize = '13px';
                             caption.style.color = '#8c8c8c';
-                            bodyDiv.appendChild(caption);
+                            resultsContent.appendChild(caption);
                         }
                     } else if (result.type === 'audio') {
                         const audio = document.createElement('audio');
@@ -1252,17 +1453,25 @@
                         }
                         audio.style.marginBottom = '8px';
                         audio.type = 'audio/mp3';
-                        bodyDiv.appendChild(audio);
+                        resultsContent.appendChild(audio);
                     } else {
-                        // 文本结果
+                        // 文本结果 - 直接显示，不尝试解析JSON
                         const textDiv = document.createElement('div');
                         textDiv.innerHTML = renderMessageContent(result.content);
-                        textDiv.style.marginBottom = '8px';
-                        bodyDiv.appendChild(textDiv);
+                        textDiv.style.fontSize = '12px';
+                        resultsContent.appendChild(textDiv);
                     }
                 });
+                
+                resultsDiv.appendChild(resultsContent);
+                bodyDiv.appendChild(resultsDiv);
             } else {
-                bodyDiv.innerHTML = '<div style="color:#8c8c8c;font-style:italic;">无结果</div>';
+                const emptyDiv = document.createElement('div');
+                emptyDiv.style.color = '#8c8c8c';
+                emptyDiv.style.fontStyle = 'italic';
+                emptyDiv.style.fontSize = '12px';
+                emptyDiv.textContent = '无结果';
+                bodyDiv.appendChild(emptyDiv);
             }
             
             headerDiv.onclick = function() {
@@ -1281,6 +1490,7 @@
                 const toolCalls = [{
                     toolName,
                     toolResult: bodyDiv.innerHTML,
+                    toolArgs,
                     collapsed: true
                 }];
                 

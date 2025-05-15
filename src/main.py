@@ -28,6 +28,7 @@ class ChatResponseItem(BaseModel):
     content: str  # 内容、URL或Base64编码的数据
     alt_text: Optional[str] = None  # 可选的替代文本
     tool_results: Optional[List[Dict[str, Any]]] = None  # 工具调用结果列表
+    tool_args: Optional[str] = None  # 工具调用参数
 
 class ChatResponse(BaseModel):
     items: list[ChatResponseItem]
@@ -97,7 +98,8 @@ async def chat_stream_api(
                 type=item.type,
                 content=item.content,
                 alt_text=item.alt_text if item.alt_text is not None else None,
-                tool_results=item.tool_results
+                tool_results=item.tool_results,
+                tool_args=item.tool_args if item.tool_args is not None else None
             )
             # 将响应项转换为JSON并发送
             yield {
