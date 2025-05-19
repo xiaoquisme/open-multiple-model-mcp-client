@@ -400,9 +400,55 @@
             padding: 6px 0;
             color: #595959;
             border-bottom: 1px dashed #f0f0f0;
+            cursor: help;
+            position: relative;
         }
         .tool-item:last-child {
             border-bottom: none;
+        }
+        .tool-description {
+            display: none;
+            position: absolute;
+            background: #fff;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            width: 280px;
+            font-size: 12px;
+            color: #595959;
+            z-index: 100;
+            left: -20px;
+            top: 25px;
+            line-height: 1.5;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+        .tool-description::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: 30px;
+            width: 10px;
+            height: 10px;
+            background: #fff;
+            border-left: 1px solid #e8e8e8;
+            border-top: 1px solid #e8e8e8;
+            transform: rotate(45deg);
+        }
+        .tool-description-title {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #262626;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed #f0f0f0;
+        }
+        .tool-item:hover .tool-description {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         pre {
             background: #f6f8fa !important;
@@ -1577,7 +1623,38 @@
             tools.forEach(tool => {
                 const div = document.createElement('div');
                 div.className = 'tool-item';
-                div.textContent = tool;
+                
+                // 检查工具数据的格式，兼容新旧格式
+                let toolName, toolDescription;
+                if (typeof tool === 'string') {
+                    toolName = tool;
+                    toolDescription = ''; // 旧格式没有描述
+                } else if (typeof tool === 'object') {
+                    toolName = tool.name;
+                    toolDescription = tool.description || '';
+                }
+                
+                div.textContent = toolName;
+                
+                // 添加工具描述的悬浮提示
+                if (toolDescription) {
+                    const descDiv = document.createElement('div');
+                    descDiv.className = 'tool-description';
+                    
+                    // 添加标题
+                    const titleDiv = document.createElement('div');
+                    titleDiv.className = 'tool-description-title';
+                    titleDiv.textContent = toolName;
+                    descDiv.appendChild(titleDiv);
+                    
+                    // 添加描述文本
+                    const textDiv = document.createElement('div');
+                    textDiv.textContent = toolDescription;
+                    descDiv.appendChild(textDiv);
+                    
+                    div.appendChild(descDiv);
+                }
+                
                 toolList.appendChild(div);
             });
             

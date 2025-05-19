@@ -137,8 +137,16 @@ async def list_servers(request: Request):
     server_kit = await composer.get_server_kit("composer")
     result = []
     for server_name in server_kit.servers_enabled.keys():
-        tools = [tool for tool in server_kit.servers_tools_hierarchy_map.get(server_name, []) if server_kit.tools_enabled.get(tool)]
-        result.append({"name": server_name, "tools": tools})
+        tools_info = []
+        for tool_name in server_kit.servers_tools_hierarchy_map.get(server_name, []):
+            if server_kit.tools_enabled.get(tool_name):
+                # 获取工具对象以提取描述信息
+                tool_obj = composer.downstream_controller.get_tool_by_control_name(tool_name)
+                tools_info.append({
+                    "name": tool_name,
+                    "description": tool_obj.tool.description if tool_obj and hasattr(tool_obj.tool, 'description') else "无描述信息"
+                })
+        result.append({"name": server_name, "tools": tools_info})
     return result
 
 # 新增：获取可用平台列表
