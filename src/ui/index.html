@@ -1121,10 +1121,39 @@
             currentToolCallId = null;
             messageQueue = [];
             
+            // 获取当前会话的聊天历史
+            let history = [];
+            try {
+                if (currentSessionId) {
+                    // 获取当前会话的聊天历史
+                    const historyData = JSON.parse(localStorage.getItem(getSessionHistoryKey(currentSessionId)) || '[]');
+                    
+                    // 格式化聊天历史为简化的格式，只保留必要字段
+                    history = historyData.map(item => {
+                        if (item.type === 'text') {
+                            return {
+                                role: item.sender === 'user' ? 'user' : 'assistant',
+                                content: item.content
+                            };
+                        }
+                        // 其他类型如工具调用、图片等可按需添加
+                        return null;
+                    }).filter(item => item !== null);
+                }
+            } catch (e) {
+                console.error('获取聊天历史失败:', e);
+                history = [];
+            }
+            
             // 构建包含模型信息的URL
             let chatUrl = `/chat_stream?message=${encodeURIComponent(text)}`;
             if (selectedPlatform && selectedModel) {
                 chatUrl += `&platform=${encodeURIComponent(selectedPlatform)}&model=${encodeURIComponent(selectedModel)}`;
+            }
+            
+            // 添加聊天历史参数
+            if (history.length > 0) {
+                chatUrl += `&chat_history=${encodeURIComponent(JSON.stringify(history))}`;
             }
             
             // 使用 EventSource 建立 SSE 连接

@@ -76,7 +76,8 @@ async def chat_stream_api(
     chat_request: Optional[ChatRequest] = None, 
     message: Optional[str] = None,
     platform: Optional[str] = None,  # 新增平台参数
-    model: Optional[str] = None      # 新增模型参数
+    model: Optional[str] = None,     # 新增模型参数
+    chat_history: Optional[str] = None  # 新增聊天历史参数
 ):
     """流式聊天API，使用SSE返回响应"""
     # 优先使用POST中的JSON数据，如果没有则使用URL查询参数
@@ -88,12 +89,21 @@ async def chat_stream_api(
     else:
         return {"error": "缺少消息内容，请提供message参数"}
         
+    # 解析聊天历史
+    history = []
+    if chat_history:
+        try:
+            history = json.loads(chat_history)
+        except json.JSONDecodeError:
+            # 解析失败时使用空历史
+            history = []
+            
     async def event_generator():
         mcp_client: MCPClient = request.app.state.mcp_client
         
         # 使用新的流式处理方法
-        # 传递平台和模型参数
-        async for item in mcp_client.process_query_stream(query, platform, model):
+        # 传递平台、模型和聊天历史参数
+        async for item in mcp_client.process_query_stream(query, platform, model, history):
             chat_item = ChatResponseItem(
                 type=item.type,
                 content=item.content,

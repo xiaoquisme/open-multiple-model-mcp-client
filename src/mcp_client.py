@@ -24,9 +24,25 @@ class MCPClient:
     # 抽取共同的工具准备逻辑
 
 
-    async def process_query_stream(self, query: str, platform: Optional[str] = None, model: Optional[str] = None) -> AsyncGenerator[ResponseItem, None]:
+    async def process_query_stream(self, query: str,
+                                   platform: Optional[str] = None,
+                                   model: Optional[str] = None,
+                                   chat_history: Optional[list] = None) -> AsyncGenerator[ResponseItem, None]:
         """处理查询并以流的形式逐个返回响应项"""
-        messages = [{"role": "user", "content": query}]
+        # 构建消息列表，包含聊天历史
+        messages = []
+        
+        # 添加聊天历史（如果有）
+        if chat_history and isinstance(chat_history, list):
+            for msg in chat_history:
+                if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                    messages.append({
+                        "role": msg['role'],
+                        "content": msg['content']
+                    })
+        
+        # 添加当前用户消息
+        messages.append({"role": "user", "content": query})
         
         # 默认使用anthropic作为平台
         platform = platform or "anthropic"
@@ -55,7 +71,7 @@ class MCPClient:
                         text_item = ResponseItem(type="text", content=message.content)
                         yield text_item
                         assistant_message_content.append({"type": "text", "text": message.content})
-                    
+
                     # Handle tool calls if present
                     if message.tool_calls:
                         for tool_call in message.tool_calls:
@@ -105,8 +121,8 @@ class MCPClient:
                                 if isinstance(result.content, list):
                                     for item in result.content:
                                         tool_result_response = json.loads(item.text)
-                                        if tool_result_response['type'] in ['image', 'audio']:
-                                            del tool_result_response['content']
+                                        if tool_result_response.get('type') in ('image', 'audio'):
+                                            tool_result_response.pop('content', None)
                                             item.text = json.dumps(tool_result_response)
                                         tool_result_content += item.text + "\n"
                                 elif isinstance(result.content, str):

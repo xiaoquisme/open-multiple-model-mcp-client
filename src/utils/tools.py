@@ -96,22 +96,15 @@ async def call_tool(tool_name, tool_args, mcp_composer):
         if result.content and isinstance(result.content, list):
             for item in result.content:
                 tool_call_response = json.loads(item.text)
-                if tool_call_response['type'] == 'image':
+                response_type = tool_call_response.get('type')
+                if response_type in ['image', 'audio']:
                     tool_results.append({
-                        "type": "image",
+                        "type": response_type,
                         "content": tool_call_response['content']
                     })
-                    continue
-                elif tool_call_response['type'] == 'audio':
+                elif hasattr(item, 'text'):
                     tool_results.append({
-                        "type": "audio",
-                        "content": tool_call_response['content']
-                    })
-                    continue
-                # 默认处理为文本
-                if hasattr(item, 'text'):
-                    tool_results.append({
-                        "type": "text",
+                        "type": "text", 
                         "content": item.text
                     })
     except Exception as tool_error:
