@@ -258,6 +258,49 @@
             color: #262626;
             border: 1px solid #f0f0f0;
         }
+        /* 用户消息操作按钮 */
+        .message-actions {
+            display: none;
+            margin-top: 4px;
+            text-align: right;
+        }
+        .message.user:hover .message-actions {
+            display: flex;
+            position: absolute;
+            right: 10px;
+            top: -20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 2px;
+        }
+        .message-retry-btn, .message-edit-btn {
+            background: transparent;
+            border: 1px solid #e8e8e8;
+            font-size: 12px;
+            color: #595959;
+            cursor: pointer;
+            padding: 3px 8px;
+            margin: 0 2px;
+            border-radius: 4px;
+            opacity: 0.9;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .message-retry-btn:hover {
+            background: #f0f7ff;
+            color: #1890ff;
+            border-color: #1890ff;
+            opacity: 1;
+        }
+        .message-edit-btn:hover {
+            background: #f6ffed;
+            color: #52c41a;
+            border-color: #52c41a;
+            opacity: 1;
+        }
         /* 工具调用相关样式 */
         .tool-call {
             border-radius: 4px;
@@ -1470,6 +1513,38 @@
             contentDiv.innerHTML = renderMessageContent(content);
             
             msgDiv.appendChild(contentDiv);
+            
+            // 为用户消息添加操作按钮（重试和编辑）
+            if (sender === 'user') {
+                // 确保消息div是相对定位，以便正确定位按钮
+                msgDiv.style.position = 'relative';
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+                
+                const retryBtn = document.createElement('button');
+                retryBtn.className = 'message-retry-btn';
+                retryBtn.innerHTML = '<span style="margin-right:2px;">↻</span> 重试';
+                retryBtn.title = '重发此消息';
+                retryBtn.onclick = function(e) {
+                    e.stopPropagation(); // 阻止事件冒泡
+                    retryMessage(content);
+                };
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'message-edit-btn';
+                editBtn.innerHTML = '<span style="margin-right:2px;">✎</span> 编辑';
+                editBtn.title = '编辑此消息';
+                editBtn.onclick = function(e) {
+                    e.stopPropagation(); // 阻止事件冒泡
+                    editMessage(msgDiv, content);
+                };
+                
+                actionsDiv.appendChild(retryBtn);
+                actionsDiv.appendChild(editBtn);
+                msgDiv.appendChild(actionsDiv);
+            }
+            
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
@@ -1484,6 +1559,11 @@
             chatInput.disabled = true;
             sendBtn.disabled = true;
             
+            sendMessageToAPI(text);
+        }
+        
+        // 发送消息到API的实现
+        function sendMessageToAPI(text) {
             // 重置工具调用状态
             currentToolCallId = null;
             messageQueue = [];
@@ -1527,8 +1607,7 @@
             const eventSource = new EventSource(chatUrl);
             
             // 存储当前消息状态
-            let pendingToolCall = null;
-            let messageItems = [];
+            pendingToolCall = null;
             
             // 处理服务器发送的消息事件
             eventSource.addEventListener('message', function(event) {
@@ -1576,6 +1655,158 @@
                 chatInput.disabled = false;
                 sendBtn.disabled = false;
             };
+        }
+        
+        // 重试消息功能
+        function retryMessage(text) {
+            // 删除最近的bot响应消息(可能有多条)
+            let lastUserMsgIndex = -1;
+            const messages = chatMessages.querySelectorAll('.message');
+            
+            // 找到最后一条用户消息的索引
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].classList.contains('user')) {
+                    lastUserMsgIndex = i;
+                    break;
+                }
+            }
+            
+            // 删除用户消息后的所有bot消息
+            if (lastUserMsgIndex >= 0) {
+                for (let i = messages.length - 1; i > lastUserMsgIndex; i--) {
+                    if (messages[i].classList.contains('bot')) {
+                        messages[i].remove();
+                    }
+                }
+            }
+            
+            // 重新发送消息
+            chatInput.disabled = true;
+            sendBtn.disabled = true;
+            sendMessageToAPI(text);
+            
+            // 更新本地存储的聊天历史
+            saveCurrentSessionHistory();
+        }
+        
+        // 编辑消息功能
+        function editMessage(msgDiv, originalText) {
+            // 创建编辑框
+            const editContainer = document.createElement('div');
+            editContainer.className = 'message-edit-container';
+            editContainer.style.marginTop = '8px';
+            
+            const editInput = document.createElement('input');
+            editInput.type = 'text';
+            editInput.className = 'chat-input';
+            editInput.style.width = '100%';
+            editInput.style.padding = '8px 12px';
+            editInput.style.borderRadius = '4px';
+            editInput.style.border = '1px solid #1890ff';
+            editInput.style.boxShadow = '0 0 0 2px rgba(24,144,255,0.1)';
+            editInput.value = originalText;
+            
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.style.display = 'flex';
+            buttonsContainer.style.justifyContent = 'flex-end';
+            buttonsContainer.style.marginTop = '8px';
+            
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.marginRight = '8px';
+            cancelBtn.style.padding = '5px 15px';
+            cancelBtn.style.background = '#f0f0f0';
+            cancelBtn.style.border = 'none';
+            cancelBtn.style.borderRadius = '4px';
+            cancelBtn.style.cursor = 'pointer';
+            cancelBtn.style.transition = 'all 0.2s';
+            
+            cancelBtn.onmouseover = function() {
+                this.style.background = '#e0e0e0';
+            };
+            cancelBtn.onmouseout = function() {
+                this.style.background = '#f0f0f0';
+            };
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = '保存并重发';
+            saveBtn.style.padding = '5px 15px';
+            saveBtn.style.background = '#1890ff';
+            saveBtn.style.color = '#fff';
+            saveBtn.style.border = 'none';
+            saveBtn.style.borderRadius = '4px';
+            saveBtn.style.cursor = 'pointer';
+            saveBtn.style.transition = 'all 0.2s';
+            
+            saveBtn.onmouseover = function() {
+                this.style.background = '#40a9ff';
+            };
+            saveBtn.onmouseout = function() {
+                this.style.background = '#1890ff';
+            };
+            
+            buttonsContainer.appendChild(cancelBtn);
+            buttonsContainer.appendChild(saveBtn);
+            
+            editContainer.appendChild(editInput);
+            editContainer.appendChild(buttonsContainer);
+            
+            // 隐藏操作按钮并添加编辑框
+            const actionsDiv = msgDiv.querySelector('.message-actions');
+            actionsDiv.style.display = 'none';
+            msgDiv.appendChild(editContainer);
+            
+            // 编辑框获得焦点
+            editInput.focus();
+            editInput.select();
+            
+            // 取消编辑
+            cancelBtn.onclick = function() {
+                editContainer.remove();
+                actionsDiv.style.display = '';
+            };
+            
+            // 保存编辑并重发
+            saveBtn.onclick = function() {
+                const newText = editInput.value.trim();
+                if (!newText) {
+                    alert('消息不能为空');
+                    return;
+                }
+                
+                // 更新消息内容
+                const contentDiv = msgDiv.querySelector('.message-content');
+                contentDiv.innerHTML = renderMessageContent(newText);
+                
+                // 删除编辑框
+                editContainer.remove();
+                actionsDiv.style.display = '';
+                
+                // 删除此消息后的所有bot消息
+                let nextElement = msgDiv.nextElementSibling;
+                while (nextElement) {
+                    const nextNextElement = nextElement.nextElementSibling;
+                    if (nextElement.classList.contains('bot')) {
+                        nextElement.remove();
+                    }
+                    nextElement = nextNextElement;
+                }
+                
+                // 重新发送消息
+                sendMessageToAPI(newText);
+                
+                // 更新本地存储的聊天历史
+                saveCurrentSessionHistory();
+            };
+            
+            // 按回车保存
+            editInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    saveBtn.click();
+                } else if (e.key === 'Escape') {
+                    cancelBtn.click();
+                }
+            });
         }
 
         sendBtn.onclick = sendMessage;
