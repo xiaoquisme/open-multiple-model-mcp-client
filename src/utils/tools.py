@@ -4,6 +4,7 @@ from typing import Dict
 from anthropic.types import OverloadedError
 from litellm import APIError
 from mcp import Tool
+from mcp.types import TextContent
 
 from .response_item import ResponseItem
 
@@ -95,16 +96,28 @@ async def call_tool(tool_name, tool_args, mcp_composer):
         # 处理工具返回的结果
         if result.content and isinstance(result.content, list):
             for item in result.content:
-                tool_call_response = json.loads(item.text)
+                if isinstance(item, TextContent):
+                    tool_results.append({
+                        "type": "text",
+                        "content": item.text
+                    })
+                    continue
+                try:
+                    tool_call_response = json.loads(item.text)
+                except Exception:
+                    tool_call_response = {
+                        "type": "text",
+                        "content": item.text
+                    }
                 response_type = tool_call_response.get('type')
-                if response_type in ['image', 'audio']:
+                if response_type in ['image', 'audio', 'text']:
                     tool_results.append({
                         "type": response_type,
                         "content": tool_call_response['content']
                     })
                 elif hasattr(item, 'text'):
                     tool_results.append({
-                        "type": "text", 
+                        "type": "text",
                         "content": item.text
                     })
     except Exception as tool_error:

@@ -1,176 +1,117 @@
-import json
 import os
-import time
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, List, Dict, Any
 
 from anthropic._exceptions import OverloadedError, RateLimitError, APIError
 from dotenv import load_dotenv
-from litellm import acompletion
 
 from api.downstream_controller import DownstreamController
+from utils.message_handler import prepare_messages
+from utils.model_client import call_model
 from utils.response_item import ResponseItem
-from utils.tools import format_tool_for_platform, call_tool, handle_api_error, prepare_tools, get_selected_model
+from utils.tool_handler import format_tool_result, prepare_tool_call_message, prepare_tool_response_message
+from utils.tools import call_tool, handle_api_error, prepare_tools, get_selected_model
 
 load_dotenv()  # 加载 .env 文件
 os.environ.get("ANTHROPIC_API_KEY")
 os.environ.get("OPENAI_API_KEY")
 
+
 class MCPClient:
     def __init__(self, mcp_composer: DownstreamController):
         self.mcp_composer = mcp_composer
-        self.max_retries = 3  # 最大重试次数
-        self.retry_delay = 2  # 重试间隔（秒）
-
-    # 抽取共同的工具准备逻辑
-
 
     async def process_query_stream(self, query: str,
                                    platform: Optional[str] = None,
                                    model: Optional[str] = None,
                                    chat_history: Optional[list] = None) -> AsyncGenerator[ResponseItem, None]:
         """处理查询并以流的形式逐个返回响应项"""
-        # 构建消息列表，包含聊天历史
-        messages = []
-        
-        # 添加聊天历史（如果有）
-        if chat_history and isinstance(chat_history, list):
-            for msg in chat_history:
-                if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
-                    messages.append({
-                        "role": msg['role'],
-                        "content": msg['content']
-                    })
-        
-        # 添加当前用户消息
-        messages.append({"role": "user", "content": query})
-        
-        # 默认使用anthropic作为平台
+        # 初始化参数
         platform = platform or "anthropic"
-        available_tools = prepare_tools(self.mcp_composer, platform)
         selected_model = get_selected_model(model, platform)
-
-        # 错误处理和重试逻辑
-        retry_count = 0
-        while retry_count <= self.max_retries:
-            try:
-                # 调用API，使用选择的模型
-                response = await acompletion(
-                    model=selected_model,
-                    max_tokens=1000,
-                    messages=messages,
-                    tools=available_tools
-                )
-
-                # Process the response based on the structure provided
-                assistant_message_content = []
-                if response.choices and len(response.choices) > 0:
-                    message = response.choices[0].message
-                    
-                    # Handle text content
-                    if message.content:
-                        text_item = ResponseItem(type="text", content=message.content)
-                        yield text_item
-                        assistant_message_content.append({"type": "text", "text": message.content})
-
-                    # Handle tool calls if present
-                    if message.tool_calls:
-                        for tool_call in message.tool_calls:
-                            tool_name = tool_call.function.name
-                            tool_args = tool_call.function.arguments
-                            
-                            # Notify frontend about tool call
-                            yield ResponseItem(
-                                type="tool_call_start",
-                                content=tool_name,
-                                tool_args=tool_args
-                            )
-                            
-                            # Call the tool and get results
-                            tool_results, result = await call_tool(tool_name, tool_args, self.mcp_composer)
-                            
-                            # Return tool call results
-                            yield ResponseItem(
-                                type="tool_call",
-                                content=tool_name,
-                                tool_results=tool_results,
-                                tool_args=tool_args
-                            )
-                            
-                            # 继续与模型对话
-                            assistant_message_content = []
-                            assistant_message_content.append({
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": tool_args if isinstance(tool_args, str) else json.dumps(tool_args)
-                                }
-                            })
-                            messages.append({"role": "assistant", "content": None, "tool_calls": [{
-                                "id": tool_call.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": tool_args if isinstance(tool_args, str) else json.dumps(tool_args)
-                                }
-                            }]})
-                            
-                            # 将工具结果转换为OpenAI格式
-                            # 处理结果内容为字符串
-                            tool_result_content = ""
-                            if result.content:
-                                if isinstance(result.content, list):
-                                    for item in result.content:
-                                        tool_result_response = json.loads(item.text)
-                                        if tool_result_response.get('type') in ('image', 'audio'):
-                                            tool_result_response.pop('content', None)
-                                            item.text = json.dumps(tool_result_response)
-                                        tool_result_content += item.text + "\n"
-                                elif isinstance(result.content, str):
-                                    tool_result_content = result.content
-                                else:
-                                    tool_result_content = json.dumps(result.content)
-                            
-                            # 使用OpenAI格式的工具响应
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": tool_result_content.strip()
-                            })
-                            
-                            # 处理模型的响应
-                            try:
-                                response = await acompletion(
-                                    model=selected_model,
-                                    max_tokens=1000,
-                                    messages=messages,
-                                    tools=available_tools
-                                )
-                                # Handle the model's response after the tool call
-                                if response.choices and len(response.choices) > 0:
-                                    if not response.choices[0].message.content:
-                                        yield ResponseItem(type="text", content="模型没有返回内容")
-                                    yield ResponseItem(type="text", content=response.choices[0].message.content)
-                                    for item in tool_results:
-                                        if item["type"] in ["image", "audio"]:
-                                            yield ResponseItem(type=item['type'], content=item['content'])
-                            except (OverloadedError, RateLimitError, APIError) as api_error:
-                                yield ResponseItem(type="text", content=f"模型响应失败: {str(api_error)}")
+        available_tools = prepare_tools(self.mcp_composer, platform)
+        
+        # 准备消息列表
+        messages = await prepare_messages(query, chat_history, selected_model)
+        
+        try:
+            # 初始调用模型
+            response = await call_model(selected_model, messages, available_tools)
+            
+            # 处理初始响应
+            if not response.choices or len(response.choices) == 0:
+                return
                 
-                # 成功处理请求，跳出重试循环
-                break
-                
-            except Exception as error:
-                # 处理错误
-                error_response, should_break = await handle_api_error(error, retry_count)
-                if error_response:
-                    yield error_response
-                if should_break:
-                    break
+            message = response.choices[0].message
+            
+            # 处理文本内容
+            if message.content:
+                yield ResponseItem(type="text", content=message.content)
+            
+            # 处理工具调用
+            if message.tool_calls:
+                for tool_call in message.tool_calls:
+                    async for item in self._handle_tool_call(tool_call, messages, selected_model, available_tools):
+                        yield item
                     
-                # 如果是过载错误且未达最大重试次数，等待后重试
-                if isinstance(error, OverloadedError) and retry_count < self.max_retries:
-                    retry_count += 1
-                    time.sleep(self.retry_delay)
+        except Exception as error:
+            # 处理错误
+            error_response, _ = await handle_api_error(error, 0)
+            if error_response:
+                yield error_response
+    
+    async def _handle_tool_call(self, tool_call, messages: List[Dict[str, Any]], model: str, available_tools: List[Dict[str, Any]]):
+        """处理单个工具调用，返回消息列表供后续处理"""
+        tool_name = tool_call.function.name
+        tool_args = tool_call.function.arguments
+        
+        # 通知前端开始工具调用
+        yield ResponseItem(
+            type="tool_call_start",
+            content=tool_name,
+            tool_args=tool_args
+        )
+        
+        # 调用工具并获取结果
+        tool_results, result = await call_tool(tool_name, tool_args, self.mcp_composer)
+        
+        # 返回工具调用结果
+        yield ResponseItem(
+            type="tool_call",
+            content=tool_name,
+            tool_results=tool_results,
+            tool_args=tool_args
+        )
+        
+        # 更新消息列表
+        messages.append(await prepare_tool_call_message(tool_call, tool_args))
+        
+        # 处理工具结果内容
+        tool_result_content = await format_tool_result(result)
+        
+        # 添加工具响应
+        messages.append(await prepare_tool_response_message(tool_call.id, tool_result_content))
+        
+        # 处理模型的后续响应
+        try:
+            response = await call_model(model, messages, available_tools)
+            
+            if response.choices and len(response.choices) > 0:
+                content = response.choices[0].message.content
+                if not content:
+                    yield ResponseItem(type="text", content="模型没有返回内容")
                 else:
-                    # 其他错误，直接跳出
-                    break
+                    yield ResponseItem(type="text", content=content)
+                
+                # 处理媒体内容
+                for item in tool_results:
+                    if item["type"] in ["image", "audio"]:
+                        yield ResponseItem(type=item['type'], content=item['content'])
+                
+                # 检查是否有后续工具调用
+                if response.choices[0].message.tool_calls:
+                    for next_tool_call in response.choices[0].message.tool_calls:
+                        async for item in self._handle_tool_call(next_tool_call, messages, model, available_tools):
+                            yield item
+                        
+        except (OverloadedError, RateLimitError, APIError) as api_error:
+            yield ResponseItem(type="text", content=f"模型响应失败: {str(api_error)}")
