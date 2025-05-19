@@ -125,6 +125,9 @@
             background: none;
             transition: all 0.2s;
             margin: 1px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .session-item:hover {
             background: #f5f5f5;
@@ -134,6 +137,49 @@
             color: #1890ff;
             font-weight: 500;
             border-right: 3px solid #1890ff;
+        }
+        .session-item span {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .session-item-actions {
+            display: none;
+            gap: 4px;
+        }
+        .session-item:hover .session-item-actions {
+            display: flex;
+        }
+        .edit-session-btn, .delete-session-btn {
+            background: none;
+            border: none;
+            color: #bfbfbf;
+            font-size: 18px;
+            line-height: 1;
+            padding: 2px 6px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: all 0.2s;
+            border-radius: 4px;
+        }
+        .edit-session-btn:hover {
+            background: #1890ff;
+            color: #fff;
+            opacity: 1;
+        }
+        .delete-session-btn:hover {
+            background: #ff4d4f;
+            color: #fff;
+            opacity: 1;
+        }
+        .edit-session-input {
+            width: 100%;
+            padding: 4px 8px;
+            border: 1px solid #1890ff;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
         }
         .session-actions {
             padding: 12px 20px;
@@ -368,6 +414,80 @@
             font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
             font-size: 13px;
         }
+        
+        /* 确认对话框样式 */
+        .confirm-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        .confirm-dialog.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .confirm-dialog-content {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 400px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-20px);
+            transition: all 0.3s;
+        }
+        .confirm-dialog.show .confirm-dialog-content {
+            transform: translateY(0);
+        }
+        .confirm-dialog-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #262626;
+        }
+        .confirm-dialog-message {
+            font-size: 14px;
+            margin-bottom: 24px;
+            color: #595959;
+        }
+        .confirm-dialog-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .confirm-dialog-cancel {
+            padding: 6px 16px;
+            background: #f0f0f0;
+            color: #595959;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .confirm-dialog-confirm {
+            padding: 6px 16px;
+            background: #ff4d4f;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .confirm-dialog-cancel:hover {
+            background: #e8e8e8;
+        }
+        .confirm-dialog-confirm:hover {
+            background: #ff7875;
+        }
     </style>
 </head>
 <body>
@@ -415,6 +535,19 @@
             <div class="tool-list" id="toolList"></div>
         </div>
     </div>
+    
+    <!-- 确认对话框 -->
+    <div class="confirm-dialog" id="confirmDialog">
+        <div class="confirm-dialog-content">
+            <div class="confirm-dialog-title">确认删除</div>
+            <div class="confirm-dialog-message" id="confirmMessage"></div>
+            <div class="confirm-dialog-buttons">
+                <button class="confirm-dialog-cancel" id="cancelDelete">取消</button>
+                <button class="confirm-dialog-confirm" id="confirmDelete">删除</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
@@ -605,10 +738,155 @@
             sessionList.forEach((s, idx) => {
                 const div = document.createElement('div');
                 div.className = 'session-item' + (s.id === currentSessionId ? ' active' : '');
-                div.textContent = s.name;
-                div.onclick = () => switchSession(s.id);
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = s.name;
+                nameSpan.onclick = () => switchSession(s.id);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'session-item-actions';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-session-btn';
+                editBtn.textContent = '✎';
+                editBtn.title = '编辑会话名称';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    editSession(s.id, idx);
+                };
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-session-btn';
+                deleteBtn.textContent = '×';
+                deleteBtn.title = '删除会话';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteSession(s.id, idx);
+                };
+                
+                actionsDiv.appendChild(editBtn);
+                actionsDiv.appendChild(deleteBtn);
+                
+                div.appendChild(nameSpan);
+                div.appendChild(actionsDiv);
                 sessionListDiv.appendChild(div);
             });
+        }
+
+        function editSession(sessionId, idx) {
+            // 获取会话项元素
+            const sessionItem = sessionListDiv.children[idx];
+            const nameSpan = sessionItem.querySelector('span');
+            const actionsDiv = sessionItem.querySelector('.session-item-actions');
+            
+            // 隐藏名称和操作按钮
+            nameSpan.style.display = 'none';
+            actionsDiv.style.display = 'none';
+            
+            // 创建输入框
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'edit-session-input';
+            input.value = sessionList[idx].name;
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    saveSessionName(sessionId, idx, input.value);
+                } else if (e.key === 'Escape') {
+                    cancelEdit();
+                }
+            });
+            input.addEventListener('blur', () => {
+                saveSessionName(sessionId, idx, input.value);
+            });
+            
+            // 插入输入框
+            sessionItem.insertBefore(input, nameSpan);
+            
+            // 输入框获得焦点
+            input.focus();
+            input.select();
+            
+            // 取消编辑，恢复原来的显示
+            function cancelEdit() {
+                input.remove();
+                nameSpan.style.display = '';
+                actionsDiv.style.display = '';
+            }
+            
+            // 保存新的会话名称
+            function saveSessionName(id, index, newName) {
+                // 验证新名称
+                if (newName.trim() === '') {
+                    alert('会话名称不能为空');
+                    input.focus();
+                    return;
+                }
+                
+                // 更新会话名称
+                sessionList[index].name = newName.trim();
+                localStorage.setItem(SESSION_LIST_KEY, JSON.stringify(sessionList));
+                
+                // 重新渲染会话列表
+                renderSessionList();
+            }
+        }
+
+        function deleteSession(sessionId, idx) {
+            // 不允许删除最后一个会话
+            if (sessionList.length <= 1) {
+                alert('至少保留一个会话');
+                return;
+            }
+            
+            // 使用自定义确认对话框
+            const confirmDialog = document.getElementById('confirmDialog');
+            const confirmMessage = document.getElementById('confirmMessage');
+            const confirmDeleteBtn = document.getElementById('confirmDelete');
+            const cancelDeleteBtn = document.getElementById('cancelDelete');
+            
+            // 设置确认消息
+            confirmMessage.textContent = `确定要删除会话"${sessionList[idx].name}"吗？`;
+            
+            // 显示对话框
+            confirmDialog.classList.add('show');
+            
+            // 删除按钮事件
+            const confirmDeleteHandler = () => {
+                // 删除会话历史记录
+                localStorage.removeItem(getSessionHistoryKey(sessionId));
+                
+                // 从会话列表中移除
+                sessionList.splice(idx, 1);
+                localStorage.setItem(SESSION_LIST_KEY, JSON.stringify(sessionList));
+                
+                // 如果删除的是当前会话，切换到第一个会话
+                if (sessionId === currentSessionId) {
+                    switchSession(sessionList[0].id);
+                } else {
+                    // 否则只需要重新渲染会话列表
+                    renderSessionList();
+                }
+                
+                // 隐藏对话框
+                confirmDialog.classList.remove('show');
+                
+                // 移除事件监听器
+                confirmDeleteBtn.removeEventListener('click', confirmDeleteHandler);
+                cancelDeleteBtn.removeEventListener('click', cancelDeleteHandler);
+            };
+            
+            // 取消按钮事件
+            const cancelDeleteHandler = () => {
+                confirmDialog.classList.remove('show');
+                
+                // 移除事件监听器
+                confirmDeleteBtn.removeEventListener('click', confirmDeleteHandler);
+                cancelDeleteBtn.removeEventListener('click', cancelDeleteHandler);
+            };
+            
+            // 添加事件监听器
+            confirmDeleteBtn.addEventListener('click', confirmDeleteHandler);
+            cancelDeleteBtn.addEventListener('click', cancelDeleteHandler);
         }
 
         function switchSession(sessionId) {
