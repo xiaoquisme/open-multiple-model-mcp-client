@@ -9,6 +9,7 @@ dependencies = [
     "asyncio>=3.4.3",
     "dotenv>=0.9.9",
     "fastapi>=0.110.0",
+    "httpx>=0.28.1",
     "litellm>=1.69.0",
     "mcp>=1.8.0",
     "pydantic>=2.11.4",

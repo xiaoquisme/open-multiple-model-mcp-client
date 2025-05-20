@@ -11,6 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
+import httpx
 
 from api.composer import Composer
 from config import Config
@@ -157,58 +158,45 @@ async def get_platforms():
         {"id": "anthropic", "name": "Anthropic"},
         {"id": "openai", "name": "OpenAI"},
         {"id": "google", "name": "Google"},
-        {"id": "mistral", "name": "Mistral"}
+        {"id": "mistral", "name": "Mistral"},
+        {"id": "openrouter", "name": "OpenRouter"}
     ]
-    # 如果存在环境变量，则根据环境变量筛选可用平台
-    available_platforms = []
-    for platform in platforms:
-        if platform["id"] == "anthropic" and os.environ.get("ANTHROPIC_API_KEY"):
-            available_platforms.append(platform)
-        elif platform["id"] == "openai" and os.environ.get("OPENAI_API_KEY"):
-            available_platforms.append(platform)
-        elif platform["id"] == "google" and os.environ.get("GOOGLE_API_KEY"):
-            available_platforms.append(platform)
-        elif platform["id"] == "mistral" and os.environ.get("MISTRAL_API_KEY"):
-            available_platforms.append(platform)
+    return platforms
     
-    # 如果没有可用平台（环境变量未设置），则返回所有平台
-    if not available_platforms:
-        return platforms
-    
-    return available_platforms
 
-# 新增：根据平台获取模型列表
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
+# 平台与 openrouter provider 的映射
+PLATFORM_MAP = {
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "google": "google",
+    "mistral": "mistral",
+    "openrouter": None  # openrouter 平台返回全部
+}
+
 @app.get("/api/models")
 async def get_models(platform: str = Query(..., description="平台ID，如anthropic, openai等")):
-    # 各平台支持的模型列表
-    models_by_platform = {
-        "anthropic": [
-            {"id": "claude-3-opus-20240229", "name": "Claude 3 Opus"},
-            {"id": "claude-3-sonnet-20240229", "name": "Claude 3 Sonnet"},
-            {"id": "claude-3-haiku-20240307", "name": "Claude 3 Haiku"},
-            {"id": "claude-2.1", "name": "Claude 2.1"},
-            {"id": "claude-2.0", "name": "Claude 2.0"}
-        ],
-        "openai": [
-            {"id": "gpt-4o", "name": "GPT-4o"},
-            {"id": "gpt-4-turbo", "name": "GPT-4 Turbo"},
-            {"id": "gpt-4", "name": "GPT-4"},
-            {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"}
-        ],
-        "google": [
-            {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
-            {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"},
-            {"id": "gemini-1.0-pro", "name": "Gemini 1.0 Pro"}
-        ],
-        "mistral": [
-            {"id": "mistral-large-latest", "name": "Mistral Large"},
-            {"id": "mistral-medium-latest", "name": "Mistral Medium"},
-            {"id": "mistral-small-latest", "name": "Mistral Small"}
-        ]
-    }
-    
-    # 返回对应平台的模型列表，如果平台不存在则返回空列表
-    return models_by_platform.get(platform, [])
+    headers = {}
+    if OPENROUTER_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(OPENROUTER_API_URL, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            # 兼容 openrouter 返回格式
+            models = data.get("data", data)
+            # 筛选
+            provider = PLATFORM_MAP.get(platform)
+            if provider:
+                filtered = [m for m in models if m.get("provider") == provider or m.get("id", "").startswith(f"{provider}/")]
+            else:
+                filtered = models  # openrouter 平台返回全部
+            # 只返回 id 和 name 字段
+            return [{"id": m["id"], "name": m.get("name", m["id"])} for m in filtered]
+        else:
+            return []
 
 def main():
     uvicorn.run("main:app", host="0.0.0.0", port=3333, reload=True)

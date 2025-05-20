@@ -10,77 +10,26 @@ from .response_item import ResponseItem
 
 
 def get_selected_model(model, platform):
-    selected_model = "anthropic/claude-3-5-sonnet-20241022"  # 默认模型
-    if platform and model:
-        # 根据平台选择正确的模型格式
-        if platform == "anthropic":
-            selected_model = f"anthropic/{model}"
-        elif platform == "openai":
-            selected_model = model
-        elif platform == "google":
-            selected_model = f"google/{model}"
-        elif platform == "mistral":
-            selected_model = f"mistral/{model}"
-    return selected_model
+    return f'{platform}/{model}'
 
 
 def prepare_tools(mcp_composer, platform="anthropic"):
     available_tools = []
     for tool in mcp_composer.tools_map.values():
         tool_obj = tool.to_new_name_tool()
-        clean_tool = format_tool_for_platform(tool_obj, platform)
+        clean_tool = format_tool_for_platform(tool_obj)
         available_tools.append(clean_tool)
     return available_tools
 
-def format_tool_for_platform(tool_obj: Tool, platform: str) -> Dict:
-    """根据不同平台格式化工具
-
-    Args:
-        tool_obj: 工具对象
-        platform: 平台类型，如"anthropic"或"openai"
-
-    Returns:
-        适用于指定平台的工具格式
-    """
-    if platform == "anthropic":
-        # Anthropic格式
-        clean_tool = {
+def format_tool_for_platform(tool_obj: Tool) -> Dict:
+    clean_tool = {
+        "type": "function",
+        "function": {
             "name": tool_obj.name,
             "description": tool_obj.description,
-            "input_schema": tool_obj.inputSchema
+            "parameters": tool_obj.inputSchema
         }
-        # 移除可能导致错误的意外字段
-        if isinstance(clean_tool["input_schema"], dict) and "custom" in clean_tool["input_schema"]:
-            if "annotations" in clean_tool["input_schema"]["custom"]:
-                del clean_tool["input_schema"]["custom"]["annotations"]
-        return clean_tool
-    if platform == "openai":
-        # OpenAI格式
-        clean_tool = {
-            "type": "function",
-            "function": {
-                "name": tool_obj.name,
-                "description": tool_obj.description,
-                "parameters": tool_obj.inputSchema
-            }
-        }
-        # 移除可能导致错误的意外字段
-        if isinstance(clean_tool["function"]["parameters"], dict) and "custom" in clean_tool["function"]["parameters"]:
-            if "annotations" in clean_tool["function"]["parameters"]["custom"]:
-                del clean_tool["function"]["parameters"]["custom"]["annotations"]
-        return clean_tool
-
-    # 其他平台的默认格式
-    clean_tool = {
-        "name": tool_obj.name,
-        "description": tool_obj.description,
-        "parameters": tool_obj.inputSchema
     }
-    # 移除可能导致错误的意外字段
-    if isinstance(clean_tool["parameters"], dict) and "custom" in clean_tool["parameters"]:
-        if "annotations" in clean_tool["parameters"]["custom"]:
-            del clean_tool["parameters"]["custom"]["annotations"]
-
     return clean_tool
 
 async def call_tool(tool_name, tool_args, mcp_composer):

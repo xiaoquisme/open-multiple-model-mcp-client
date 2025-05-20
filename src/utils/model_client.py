@@ -5,6 +5,7 @@ from litellm import acompletion
 
 async def call_model(model: str, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> Any:
     """调用模型API"""
+    model = f"openrouter/{model}" if not model.startswith("openrouter") else model
     return await acompletion(
         model=model,
         max_tokens=1000,
